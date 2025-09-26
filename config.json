@@ -1,0 +1,21 @@
+{
+  "brokers": {
+    "interactive_brokers": {
+      "host": "127.0.0.1",
+      "port": 7498,
+      "client_id": 1
+    }
+  },
+  "database": {
+    "path": "trading_system.db"
+  },
+  "logging": {
+    "level": "INFO",
+    "file": "trading_system.log"
+  },
+  "system": {
+    "max_concurrent_orders": 100,
+    "order_timeout": 30,
+    "data_cache_ttl": 300
+  }
+}
