@@ -11,12 +11,20 @@ A comprehensive, modular Python trading system designed to work with Interactive
 - **Multi-Broker Support**: Modular architecture allows easy addition of new brokers
 - **Data Persistence**: SQLite database for caching data and storing order/trade history
 - **Account Management**: Access account information and positions across brokers
+![](sequence.png)
 
 ### Architecture
+![](arch.png)
 - **Broker Abstraction Layer**: Unified interface for different brokers
 - **Factory Pattern**: Easy instantiation and management of broker connections
 - **Event-Driven**: Callback system for order updates and market data
 - **Modular Design**: Clean separation of concerns for easy maintenance and extension
+
+### Key Components
+**BrokerInterface**: Abstract base class that defines the interface all brokers must implement. This ensures consistency across different broker implementations.
+**DataManager**: Handles historical and real-time data, including caching, retrieval, and storage in SQLite database.
+**OrderManager**: Manages order lifecycle, tracks status, and maintains order history with complete audit trail.
+**BrokerFactory**: Factory pattern implementation for creating broker instances with proper configuration.
 
 ### Supported Features
 - **Order Types**: Market, Limit, Stop, Stop-Limit orders
@@ -225,16 +233,6 @@ config/
    __init__.py
    config.py           # Configuration management
 ```
-
-### Key Components
-
-**BrokerInterface**: Abstract base class that defines the interface all brokers must implement. This ensures consistency across different broker implementations.
-
-**DataManager**: Handles historical and real-time data, including caching, retrieval, and storage in SQLite database.
-
-**OrderManager**: Manages order lifecycle, tracks status, and maintains order history with complete audit trail.
-
-**BrokerFactory**: Factory pattern implementation for creating broker instances with proper configuration.
 
 ## Adding New Brokers
 
