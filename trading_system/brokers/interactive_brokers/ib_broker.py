@@ -5,9 +5,8 @@ Implements the BrokerInterface for IB TWS/Gateway API.
 
 import threading
 import time
-from typing import List, Dict, Any, Optional, Callable
+from typing import List, Dict, Any, Callable
 from datetime import datetime
-from collections import defaultdict
 
 try:
     from ibapi.client import EClient
@@ -149,7 +148,7 @@ class IBBroker(BrokerInterface):
         timeout = 30
         start_time = time.time()
         while len(self.historical_data[req_id]) == 0 and (time.time() - start_time) < timeout:
-            time.sleep(0.1)
+            time.sleep(1) # sleep 1 sec
 
         # Convert to our BarData format
         bars = []
@@ -238,7 +237,6 @@ class IBBroker(BrokerInterface):
 
         ib_contract = self._create_ib_contract(contract)
         self.client.reqMktData(req_id, ib_contract, "", False, False, [])
-
         return True
 
     def unsubscribe_market_data(self, contract: Contract) -> bool:

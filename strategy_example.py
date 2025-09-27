@@ -43,7 +43,7 @@ def main():
         name="ib_paper",
         broker_type="ib",
         host=ib_config.get("host", "127.0.0.1"),
-        port=ib_config.get("port", 7497),
+        port=ib_config.get("port", 7498),
         client_id=ib_config.get("client_id", 1)
     )
 
@@ -188,25 +188,6 @@ def main():
         # Show recent orders
         for order in order_history[:3]:
             print(f"  {order.get('symbol')} - {order.get('action')} {order.get('quantity')} - {order.get('status')}")
-
-        # Example 8: Export Data
-        print_section("Exporting Historical Data")
-
-        if not hist_data.empty:
-            filename = f"AAPL_historical_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
-
-            end_date = datetime.now()
-            start_date = end_date - timedelta(days=5)
-
-            trading_system.export_historical_data(
-                symbol="AAPL",
-                exchange="SMART",
-                start_date=start_date,
-                end_date=end_date,
-                filename=filename
-            )
-
-            print(f"Historical data exported to: {filename}")
 
     except Exception as e:
         print(f"Error during example execution: {e}")

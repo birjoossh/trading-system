@@ -2,7 +2,7 @@
 Example usage of the modular trading system.
 Demonstrates basic functionality with Interactive Brokers.
 """
-
+import threading
 import time
 from datetime import datetime, timedelta
 from trading_system.main import TradingSystem
@@ -88,16 +88,20 @@ def main():
         print_section("Subscribing to Market Data")
 
         print("Subscribing to AAPL market data...")
-        trading_system.subscribe_market_data(
-            symbol="AAPL",
-            exchange="SMART",
-            callback=on_market_data,
-            broker_name="ib"
-        )
+
+
+        def start_market_data_subscription():
+            trading_system.subscribe_market_data(
+                symbol="AAPL",
+                exchange="SMART",
+                callback=on_market_data,
+                broker_name="ib"
+            )
+        market_data_thread = threading.Thread(target=start_market_data_subscription, daemon=False)
+        market_data_thread.start()
 
         # Let it run for a few seconds to see market data
-        print("Receiving market data for 10 seconds...")
-        time.sleep(10)
+        #time.sleep(10)
 
         # Example 3: Submit Orders
         print_section("Order Management Examples")
@@ -190,24 +194,25 @@ def main():
             print(f"  {order.get('symbol')} - {order.get('action')} {order.get('quantity')} - {order.get('status')}")
 
         # Example 8: Export Data
-        print_section("Exporting Historical Data")
+        # print_section("Exporting Historical Data")
 
-        if not hist_data.empty:
-            filename = f"AAPL_historical_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
-
-            end_date = datetime.now()
-            start_date = end_date - timedelta(days=5)
-
-            trading_system.export_historical_data(
-                symbol="AAPL",
-                exchange="SMART",
-                start_date=start_date,
-                end_date=end_date,
-                filename=filename
-            )
-
-            print(f"Historical data exported to: {filename}")
-
+        # if not hist_data.empty:
+        #     filename = f"AAPL_historical_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+        #
+        #     end_date = datetime.now()
+        #     start_date = end_date - timedelta(days=5)
+        #
+        #     trading_system.export_historical_data(
+        #         symbol="AAPL",
+        #         exchange="SMART",
+        #         start_date=start_date,
+        #         end_date=end_date,
+        #         filename=filename
+        #     )
+        #
+        #     print(f"Historical data exported to: {filename}")
+        while True:
+            time.sleep(100)
     except Exception as e:
         print(f"Error during example execution: {e}")
         import traceback

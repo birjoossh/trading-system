@@ -6,9 +6,10 @@ Provides unified interface for historical and real-time data.
 import pandas as pd
 from typing import List, Dict, Optional, Callable
 from datetime import datetime, timedelta
+from dataclasses import asdict
 import sqlite3
 
-from trading_system.brokers.base_broker import BrokerInterface, Contract
+from trading_system.brokers.base_broker import BrokerInterface, Contract, BarData, TickData
 
 
 class DataManager:
@@ -52,6 +53,15 @@ class DataManager:
                 )
             """)
 
+    def _get_broker(self, name: str):
+        """Add a broker for data retrieval"""
+        return self.brokers[name]
+
+    def _bars_to_dataframe(self, bars: List[BarData]):
+        df = pd.DataFrame([asdict(bar) for bar in bars])
+        df.set_index('timestamp', inplace=True)
+        return df
+
     def add_broker(self, name: str, broker: BrokerInterface):
         """Add a broker for data retrieval"""
         self.brokers[name] = broker
@@ -69,15 +79,18 @@ class DataManager:
         # Get from broker
         broker = self._get_broker(broker_name)
         bars = broker.get_historical_data(contract, duration, bar_size)
-
         # Convert to DataFrame
         df = self._bars_to_dataframe(bars)
 
         # Cache the data
         if use_cache and not df.empty:
-            self._cache_bars(contract, bars, bar_size)
+            self._cache_bars(df)
 
         return df
+
+    def _cache_bars(self, df: pd.DataFrame):
+        with sqlite3.connect(self.db_path) as conn:
+            df.to_sql('historical_bars', conn, if_exists='append', index=True, index_label="timestamp")
 
     def _get_cached_bars(self, contract: Contract, bar_size: str, duration: str) -> pd.DataFrame:
         """Retrieve cached bar data"""
@@ -111,3 +124,63 @@ class DataManager:
             )
 
         return df
+
+    def subscribe_real_time_data(self, contract: Contract, callback: Callable,
+                                 broker_name: Optional[str] = None) -> bool:
+        """Subscribe to real-time market data and store in DB and/or notify subscribers.
+
+        Args:
+            contract (Contract): Instrument to subscribe to.
+            callback (Callable): Function to call with each TickData.
+            broker_name (str, optional): Which broker to use. Defaults to only/first one.
+
+        Returns:
+            bool: True if subscription was successful.
+        """
+        broker = self._get_broker(broker_name)
+
+        def storage_and_user_callback(tick_data: TickData):
+            # Store tick data
+            self._store_tick_data(tick_data)
+            # Forward to user's callback
+            callback(tick_data)
+        # Use broker to subscribe
+        return broker.subscribe_market_data(contract, storage_and_user_callback)
+
+    def _store_tick_data(self, tick_data):
+        with sqlite3.connect(self.db_path) as conn:
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO tick_data 
+                (symbol, timestamp, bid, ask, last, volume)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    tick_data.symbol,
+                    tick_data.timestamp,
+                    tick_data.bid,
+                    tick_data.ask,
+                    tick_data.last,
+                    tick_data.volume
+                )
+            )
+
+    # def export_data(self, contract: Contract, start_date: datetime, end_date: datetime, bar_size: str = "1 hour", filename: str = "history.csv"):
+    #     query = """
+    #                SELECT timestamp, open, high, low, close, volume
+    #                FROM historical_bars
+    #                WHERE symbol = ? AND exchange = ? AND bar_size = ?
+    #                AND timestamp >= ? AND timestamp <= ?
+    #                ORDER BY timestamp
+    #            """
+    #
+    #     with sqlite3.connect(self.db_path) as conn:
+    #         df = pd.read_sql_query(
+    #             query,
+    #             conn,
+    #             params=[contract.symbol, contract.exchange, bar_size,
+    #                     start_date.isoformat(), end_date.isoformat()],
+    #             #parse_dates=['timestamp'],
+    #             #index_col='timestamp'
+    #         )
+    #         df.to_csv(filename, columns = ["timestamp", "open", "high", "low", "close", "volume"])
