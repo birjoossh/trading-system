@@ -117,6 +117,9 @@ class IBBroker(BrokerInterface):
         ib_order.totalQuantity = order.quantity
         ib_order.orderType = order.order_type.value
 
+        ib_order.eTradeOnly = False
+        ib_order.firmQuoteOnly = False
+
         if order.limit_price:
             ib_order.lmtPrice = order.limit_price
         if order.stop_price:
@@ -125,7 +128,7 @@ class IBBroker(BrokerInterface):
             ib_order.tif = order.time_in_force
         if order.account:
             ib_order.account = order.account
-
+        ib_order.eTradeOnly = False
         return ib_order
 
     def get_historical_data(self, contract: Contract, duration: str,
@@ -236,7 +239,9 @@ class IBBroker(BrokerInterface):
         }
 
         ib_contract = self._create_ib_contract(contract)
-        self.client.reqMktData(req_id, ib_contract, "", False, False, [])
+        snapshot = True # realtime is not free
+        regulatorySnapshot = False # not free
+        self.client.reqMktData(req_id, ib_contract, "", snapshot, regulatorySnapshot, [])
         return True
 
     def unsubscribe_market_data(self, contract: Contract) -> bool:
@@ -308,13 +313,27 @@ class IBClient(EWrapper, EClient):
         """Receive order status updates"""
         order_id = str(orderId)
         if order_id in self.broker.orders:
+            # Map IB status strings to our OrderStatus enum
+            status_mapping = {
+                'PendingSubmit': OrderStatus.PENDING,
+                'PendingCancel': OrderStatus.PENDING,
+                'PreSubmitted': OrderStatus.PENDING,
+                'Submitted': OrderStatus.SUBMITTED,
+                'ApiPending': OrderStatus.PENDING,
+                'ApiCancelled': OrderStatus.CANCELLED,
+                'Cancelled': OrderStatus.CANCELLED,
+                'Filled': OrderStatus.FILLED,
+                'PartiallyFilled': OrderStatus.SUBMITTED,
+                'Rejected': OrderStatus.REJECTED
+            }
+            # Convert IB status to our enum, default to PENDING if unknown
+            mapped_status = status_mapping.get(status, OrderStatus.PENDING)
             self.broker.orders[order_id].update({
-                'status': OrderStatus(status) if status in [s.value for s in OrderStatus] else status,
+                'status': mapped_status,
                 'filled': filled,
                 'remaining': remaining,
                 'avg_fill_price': avgFillPrice
             })
-
             # Trigger callback
             self.broker.trigger_callback('order_status', order_id, self.broker.orders[order_id])
 

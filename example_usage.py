@@ -109,7 +109,7 @@ def main():
         # Submit a limit buy order
         print("Submitting limit buy order for 100 AAPL shares...")
         current_price = hist_data['close'].iloc[-1] if not hist_data.empty else 150.0
-        limit_price = current_price * 0.99  # 1% below current price
+        limit_price = 255.46 #current_price #* 0.99  # 1% below current price
 
         buy_order_id = trading_system.submit_limit_order(
             symbol="AAPL",
@@ -124,7 +124,7 @@ def main():
 
         # Submit a limit sell order
         print("Submitting limit sell order for 50 AAPL shares...")
-        sell_limit_price = current_price * 1.01  # 1% above current price
+        sell_limit_price = 255.46 #current_price * 1.01  # 1% above current price
 
         sell_order_id = trading_system.submit_limit_order(
             symbol="AAPL",

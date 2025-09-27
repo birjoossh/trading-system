@@ -6,7 +6,7 @@ Provides unified interface for order submission, tracking, and management.
 from typing import Dict, List, Optional, Callable
 from datetime import datetime
 import uuid
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass, asdict, fields
 import json
 import sqlite3
 
@@ -28,6 +28,11 @@ class ManagedOrder:
     avg_fill_price: float = 0.0
     commission: float = 0.0
     trades: List[Trade] = None
+
+    def __str__(self):
+        return ', '.join(
+            f"{f.name}={getattr(self, f.name)!r}" for f in fields(self)
+        )
 
     def __post_init__(self):
         if self.trades is None:

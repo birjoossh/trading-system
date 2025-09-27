@@ -21,6 +21,7 @@ class TradingSystem:
         self.brokers = {}
         self.strategies = {}
         self.is_running = False
+        self.order_manager.callbacks['order_submitted'].append(lambda args: print("Order submitted callback triggered " + str(args)))
 
     def add_broker(self, name: str, broker_type: str, **config) -> bool:
         """Add a broker to the system"""
