@@ -43,6 +43,9 @@ class DataManager:
 
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS tick_data (
+                    exchange TEXT,
+                    security_type TEXT,
+                    currency TEXT,
                     symbol TEXT,
                     timestamp TEXT,
                     bid REAL,
@@ -122,7 +125,6 @@ class DataManager:
                 parse_dates=['timestamp'],
                 index_col='timestamp'
             )
-
         return df
 
     def subscribe_real_time_data(self, contract: Contract, callback: Callable,
@@ -152,11 +154,14 @@ class DataManager:
             conn.execute(
                 """
                 INSERT OR REPLACE INTO tick_data 
-                (symbol, timestamp, bid, ask, last, volume)
-                VALUES (?, ?, ?, ?, ?, ?)
+                (exchange, security_type, symbol, currency, timestamp, bid, ask, last, volume)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
+                    tick_data.exchange,
+                    tick_data.security_type,
                     tick_data.symbol,
+                    tick_data.currency,
                     tick_data.timestamp,
                     tick_data.bid,
                     tick_data.ask,
@@ -164,23 +169,3 @@ class DataManager:
                     tick_data.volume
                 )
             )
-
-    # def export_data(self, contract: Contract, start_date: datetime, end_date: datetime, bar_size: str = "1 hour", filename: str = "history.csv"):
-    #     query = """
-    #                SELECT timestamp, open, high, low, close, volume
-    #                FROM historical_bars
-    #                WHERE symbol = ? AND exchange = ? AND bar_size = ?
-    #                AND timestamp >= ? AND timestamp <= ?
-    #                ORDER BY timestamp
-    #            """
-    #
-    #     with sqlite3.connect(self.db_path) as conn:
-    #         df = pd.read_sql_query(
-    #             query,
-    #             conn,
-    #             params=[contract.symbol, contract.exchange, bar_size,
-    #                     start_date.isoformat(), end_date.isoformat()],
-    #             #parse_dates=['timestamp'],
-    #             #index_col='timestamp'
-    #         )
-    #         df.to_csv(filename, columns = ["timestamp", "open", "high", "low", "close", "volume"])

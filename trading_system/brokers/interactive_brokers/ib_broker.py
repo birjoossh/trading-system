@@ -34,9 +34,9 @@ class IBBroker(BrokerInterface):
             raise ImportError("IB API not available. Install with: pip install ibapi")
 
         self.client = IBClient(self)
-        self.host = "127.0.0.1"
-        self.port = 7498  # Paper trading port
-        self.client_id = 1
+        self.host = host
+        self.port = port  # Paper trading port
+        self.client_id = client_id
         self.next_order_id = None
         self.historical_data = {}
         self.market_data = {}
@@ -44,6 +44,8 @@ class IBBroker(BrokerInterface):
         self.positions = []
         self.account_info = {}
         self._api_thread = None
+        self._connected_event = threading.Event()
+        self._lock = threading.RLock()
         print("done initialization....")
 
     def connect(self, host: str = "127.0.0.1", port: int = 7498, client_id: int = 1) -> bool:
@@ -53,26 +55,27 @@ class IBBroker(BrokerInterface):
         self.port = port
         self.client_id = client_id
 
+        if self.is_connected:
+            return True
+        
+        self._connected_event.clear()
         try:
             self.client.connect(host, port, client_id)
             print("connection done")
             # Start API thread
             self._api_thread = threading.Thread(target=self.client.run, daemon=True)
             self._api_thread.start()
-
-            # Wait for next valid order ID (confirms connection)
-            timeout = 10
-            start_time = time.time()
-            while self.next_order_id is None and (time.time() - start_time) < timeout:
-                time.sleep(0.1)
-
-            if self.next_order_id is not None:
-                self.is_connected = True
-                print(f"Connected to IB at {host}:{port} with client ID {client_id}")
-                return True
-            else:
-                print("Failed to connect to IB - timeout waiting for next order ID")
+            if not self._connected_event.wait(timeout=10):
+                try:
+                    self.client.disconnect()
+                except Exception as e:
+                   pass
                 return False
+            self.is_connected = True
+            print(f"Connected to IB at {host}:{port} with client ID {client_id}")
+
+            # nextValidId will signal _connected_event; we've already waited above
+            return True
 
         except Exception as e:
             print(f"Connection error: {e}")
@@ -81,8 +84,12 @@ class IBBroker(BrokerInterface):
     def disconnect(self) -> bool:
         """Disconnect from IB"""
         try:
-            self.client.disconnect()
+            if self.client:
+                self.client.disconnect()
             self.is_connected = False
+            self._connected_event.clear()
+            if self._api_thread and self._api_thread.is_alive():
+                self._api_thread.join(timeout=2.0)
             print("Disconnected from IB")
             return True
         except Exception as e:
@@ -112,6 +119,10 @@ class IBBroker(BrokerInterface):
 
     def _create_ib_order(self, order: Order) -> IBOrder:
         """Convert our Order to IB Order"""
+        if order.order_type in (OrderType.LIMIT, OrderType.STOP_LIMIT) and (order.limit_price is None or order.limit_price <= 0):
+            raise ValueError("limit_price must be positive for LIMIT/STOP_LIMIT orders")
+        if order.order_type in (OrderType.STOP, OrderType.STOP_LIMIT) and (order.stop_price is None or order.stop_price <= 0):
+            raise ValueError("stop_price must be positive for STOP/STOP_LIMIT orders")
         ib_order = IBOrder()
         ib_order.action = order.action.value
         ib_order.totalQuantity = order.quantity
@@ -239,7 +250,12 @@ class IBBroker(BrokerInterface):
         }
 
         ib_contract = self._create_ib_contract(contract)
-        snapshot = True # realtime is not free
+        try:
+            self.client.reqMarketDataType(3) # 1=live, 2=frozen, 3=delayed, 4=delayed-frozen # realtime is not free
+        except Exception as e:
+            print(f"Error setting market data type: {e}")
+            return False
+        snapshot = False
         regulatorySnapshot = False # not free
         self.client.reqMktData(req_id, ib_contract, "", snapshot, regulatorySnapshot, [])
         return True
@@ -265,6 +281,10 @@ class IBClient(EWrapper, EClient):
     def nextValidId(self, orderId: OrderId):
         """Receive next valid order ID"""
         self.broker.next_order_id = orderId
+        try:
+            self.broker._connected_event.set()
+        except Exception:
+            pass
 
     def historicalData(self, reqId: int, bar):
         """Receive historical data"""
@@ -281,30 +301,47 @@ class IBClient(EWrapper, EClient):
             data = self.broker.market_data[reqId]
 
             # Map tick types to our format
+            ## live ticks
             if tickType == 1:  # Bid
                 data['data']['bid'] = price
             elif tickType == 2:  # Ask
                 data['data']['ask'] = price
             elif tickType == 4:  # Last
                 data['data']['last'] = price
+            ## delayed ticks
+            if tickType == 66:  # Delayed Bid
+                data['data']['bid'] = price
+            elif tickType == 67:  # Delayed Ask
+                data['data']['ask'] = price
+            elif tickType == 68:  # Delayed Last
+                data['data']['last'] = price
 
-            # Create tick data and call callback
-            tick_data = TickData(
-                timestamp=datetime.now(),
-                symbol=data['contract'].symbol,
-                bid=data['data'].get('bid'),
-                ask=data['data'].get('ask'),
-                last=data['data'].get('last')
-            )
+            bid = data['data'].get('bid')
+            ask = data['data'].get('ask')
+            last = data['data'].get('last')
 
-            if data['callback']:
-                data['callback'](tick_data)
+            if (bid is not None) or (ask is not None) or (last is not None):
+                # Create tick data and call callback
+                tick_data = TickData(
+                    timestamp=datetime.now(),
+                    exchange=data['contract'].exchange,
+                    security_type=data['contract'].security_type,
+                    currency=data['contract'].currency,
+                    symbol=data['contract'].symbol,
+                    bid=bid,
+                    ask=ask,
+                    last=last
+                )
+
+                if data['callback']:
+                    data['callback'](tick_data)
 
     def tickSize(self, reqId: int, tickType: int, size: int):
         """Receive tick size data"""
-        if reqId in self.broker.market_data and tickType == 8:  # Volume
+        if reqId in self.broker.market_data :
             data = self.broker.market_data[reqId]
-            data['data']['volume'] = size
+            if tickType == 8 or tickType == 74: # Volume (8 = live last size updates, 74 = delayed volume)
+                data['data']['volume'] = size
 
     def orderStatus(self, orderId: OrderId, status: str, filled: float,
                    remaining: float, avgFillPrice: float, permId: int,
@@ -324,6 +361,8 @@ class IBClient(EWrapper, EClient):
                 'Cancelled': OrderStatus.CANCELLED,
                 'Filled': OrderStatus.FILLED,
                 'PartiallyFilled': OrderStatus.SUBMITTED,
+                'Rejected': OrderStatus.REJECTED,
+                'Inactive': OrderStatus.REJECTED,
                 'Rejected': OrderStatus.REJECTED
             }
             # Convert IB status to our enum, default to PENDING if unknown
@@ -343,6 +382,10 @@ class IBClient(EWrapper, EClient):
 
     def execDetails(self, reqId: int, contract, execution):
         """Receive execution details"""
+        side_map = {
+            "BOT" : OrderAction.BUY,
+            "SLD" : OrderAction.SELL
+        }
         trade = Trade(
             order_id=str(execution.orderId),
             contract=Contract(
@@ -355,7 +398,7 @@ class IBClient(EWrapper, EClient):
             quantity=execution.shares,
             price=execution.price,
             timestamp=datetime.strptime(execution.time, "%Y%m%d %H:%M:%S"),
-            side=OrderAction(execution.side)
+            side=OrderAction(side_map[execution.side])
         )
 
         # Trigger callback

@@ -76,7 +76,10 @@ class BarData:
 class TickData:
     """Represents real-time tick data"""
     timestamp: datetime
+    exchange: str
+    security_type: str # STK, CASH, FUT, OPT, etc.
     symbol: str
+    currency: str
     bid: Optional[float] = None
     ask: Optional[float] = None
     last: Optional[float] = None
