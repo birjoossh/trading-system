@@ -168,9 +168,6 @@ The main interface for the trading system.
 - `get_positions(broker_name)` - Get current positions
 - `get_account_info(broker_name)` - Get account information
 
-**Data Export**
-- `export_historical_data(symbol, exchange, start_date, end_date, filename)` - Export data to CSV
-
 **History**
 - `get_order_history(symbol, start_date, end_date)` - Get order history
 - `get_trade_history(symbol, start_date, end_date)` - Get trade history
@@ -183,7 +180,7 @@ from trading_system.brokers.base_broker import Contract
 contract = Contract(
     symbol="AAPL",           # Symbol
     security_type="STK",     # STK, CASH, FUT, OPT, etc.
-    exchange="SMART",        # Exchange
+    exchange="NASDAQ",       # Exchange
     currency="USD",          # Currency
     expiry="20231215",       # For futures/options
     strike=150.0,            # For options
