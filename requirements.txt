@@ -12,7 +12,8 @@ ibapi>=9.81.1
 matplotlib>=3.5.0  # For plotting (optional)
 ta-lib>=0.4.0      # Technical analysis (optional, requires separate installation)
 requests>=2.25.0   # For REST APIs (optional)
-
+tenacity>=8.0.0   # For retry logic
+websockets
 # Development dependencies (optional)
 pytest>=6.0.0      # For testing
 jupyter>=1.0.0     # For notebooks

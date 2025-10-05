@@ -125,20 +125,20 @@ class IBBroker(BrokerInterface):
             raise ValueError("stop_price must be positive for STOP/STOP_LIMIT orders")
         ib_order = IBOrder()
         ib_order.action = order.action.value
-        ib_order.totalQuantity = order.quantity
+        ib_order.totalQuantity = int(order.quantity)
         ib_order.orderType = order.order_type.value
 
         ib_order.eTradeOnly = False
         ib_order.firmQuoteOnly = False
 
-        if order.limit_price:
-            ib_order.lmtPrice = order.limit_price
+        if order.limit_price is not None:
+            ib_order.lmtPrice = float(order.limit_price)
         if order.stop_price:
-            ib_order.auxPrice = order.stop_price
-        if order.time_in_force:
-            ib_order.tif = order.time_in_force
-        if order.account:
-            ib_order.account = order.account
+            ib_order.auxPrice = float(order.stop_price)
+        if order.time_in_force is not None:
+            ib_order.tif = str(order.time_in_force)
+        if order.account is not None:
+            ib_order.account = str(order.account)
         ib_order.eTradeOnly = False
         return ib_order
 
@@ -152,30 +152,38 @@ class IBBroker(BrokerInterface):
         self.historical_data[req_id] = []
 
         ib_contract = self._create_ib_contract(contract)
-
-        # Request historical data
-        self.client.reqHistoricalData(
-            req_id, ib_contract, "", duration, bar_size, what_to_show, 1, 1, False, []
-        )
-
-        # Wait for data
-        timeout = 30
-        start_time = time.time()
-        while len(self.historical_data[req_id]) == 0 and (time.time() - start_time) < timeout:
-            time.sleep(1) # sleep 1 sec
-
-        # Convert to our BarData format
-        bars = []
-        for bar in self.historical_data[req_id]:
-            bar_data = BarData(
-                timestamp=datetime.strptime(bar.date, "%Y%m%d %H:%M:%S"),
-                open=bar.open,
-                high=bar.high,
-                low=bar.low,
-                close=bar.close,
-                volume=bar.volume
+        
+        try:
+            # Request historical data
+            self.client.reqHistoricalData(
+                req_id, ib_contract, "", duration, bar_size, what_to_show, 1, 1, False, []
             )
-            bars.append(bar_data)
+
+            # Wait for data
+            timeout = 30
+            start_time = time.time()
+            while len(self.historical_data[req_id]) == 0 and (time.time() - start_time) < timeout:
+                time.sleep(1) # sleep 1 sec
+
+            # Convert to our BarData format
+            bars = []
+            for bar in self.historical_data[req_id]:
+                try:
+                    bar_data = BarData(
+                        timestamp=datetime.strptime(bar.date, "%Y%m%d %H:%M:%S"),
+                        open=bar.open,
+                        high=bar.high,
+                        low=bar.low,
+                        close=bar.close,
+                        volume=bar.volume
+                    )
+                    bars.append(bar_data)
+                except (ValueError, AttributeError):
+                    print(f"Error parsing bar data: {e}")
+                    continue
+        finally:
+            if req_id in self.historical_data:
+                del self.historical_data[req_id]
 
         return bars
 
@@ -204,8 +212,14 @@ class IBBroker(BrokerInterface):
             'timestamp': datetime.now()
         }
 
+        try:
         # Submit order
-        self.client.placeOrder(int(order_id), ib_contract, ib_order)
+            self.client.placeOrder(int(order_id), ib_contract, ib_order)
+            return order_id
+        except Exception as e:
+            print(f"Error submitting order {order_id}: {e}")
+            del self.orders[order_id]
+            raise e
 
         return order_id
 
@@ -252,24 +266,28 @@ class IBBroker(BrokerInterface):
         ib_contract = self._create_ib_contract(contract)
         try:
             self.client.reqMarketDataType(3) # 1=live, 2=frozen, 3=delayed, 4=delayed-frozen # realtime is not free
+            snapshot = False
+            regulatorySnapshot = False # not free
+            self.client.reqMktData(req_id, ib_contract, "", snapshot, regulatorySnapshot, [])
+            return True
         except Exception as e:
-            print(f"Error setting market data type: {e}")
+            print(f"Error subscribing to market data: {e}")
+            if req_id in self.market_data:
+                del self.market_data[req_id]
             return False
-        snapshot = False
-        regulatorySnapshot = False # not free
-        self.client.reqMktData(req_id, ib_contract, "", snapshot, regulatorySnapshot, [])
-        return True
 
     def unsubscribe_market_data(self, contract: Contract) -> bool:
         """Unsubscribe from market data"""
         # Find and cancel subscription
         for req_id, data in self.market_data.items():
-            if data['contract'].symbol == contract.symbol:
-                self.client.cancelMktData(req_id)
-                del self.market_data[req_id]
-                return True
-        return False
-
+            if data['contract'].symbol == contract.symbol and data['exchange'] == contract.exchange:
+                try:
+                    self.client.cancelMktData(req_id)
+                    del self.market_data[req_id]
+                    removed = True
+                except Exception as e:
+                    print(f"Error unsubscribing from market data: {e}")
+        return removed
 
 class IBClient(EWrapper, EClient):
     """IB API client wrapper"""
