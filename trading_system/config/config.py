@@ -39,7 +39,7 @@ class Config:
                 }
             },
             "database": {
-                "path": "trading_system.db"
+                "path": "trading_system2.db"
             },
             "logging": {
                 "level": "INFO",

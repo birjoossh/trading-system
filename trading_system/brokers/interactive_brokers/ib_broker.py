@@ -42,7 +42,8 @@ class IBBroker(BrokerInterface):
         self.market_data = {}
         self.orders = {}
         self.positions = []
-        self.account_info = {}
+        self.account_info = {}  # unimplemented
+        self.accounts = []
         self._api_thread = None
         self._connected_event = threading.Event()
         self._lock = threading.RLock()
@@ -75,6 +76,10 @@ class IBBroker(BrokerInterface):
             print(f"Connected to IB at {host}:{port} with client ID {client_id}")
 
             # nextValidId will signal _connected_event; we've already waited above
+
+            ## update the account info
+            # self.client.reqAccountUpdates(subscribe=True)
+            self._req_account_updates()
             return True
 
         except Exception as e:
@@ -95,6 +100,9 @@ class IBBroker(BrokerInterface):
         except Exception as e:
             print(f"Disconnect error: {e}")
             return False
+
+    def _req_account_updates(self):
+        accounts = self.client.reqManagedAccts()
 
     def _create_ib_contract(self, contract: Contract) -> IBContract:
         """Convert our Contract to IB Contract"""
@@ -453,6 +461,9 @@ class IBClient(EWrapper, EClient):
             'currency': currency,
             'account': accountName
         }
+
+    def managedAccounts(self, accountsList:str):
+        self.accounts = accountsList
 
     def error(self, reqId: int, errorCode: int, errorString: str, advancedOrderRejectJson: str = ""):
         """Handle errors"""

@@ -15,7 +15,7 @@ from trading_system.orders.order_manager import OrderManager
 class TradingSystem:
     """Main trading system class"""
 
-    def __init__(self, db_path: str = "trading_system.db"):
+    def __init__(self, db_path: str = "trading_system2.db"):
         self.data_manager = DataManager(db_path)
         self.order_manager = OrderManager(db_path)
         self.brokers = {}
@@ -207,20 +207,6 @@ class TradingSystem:
     def register_order_callback(self, event_type: str, callback: Callable):
         """Register callback for order events"""
         self.order_manager.register_callback(event_type, callback)
-
-    # def export_historical_data(self, symbol: str, exchange: str,
-    #                          start_date: datetime, end_date: datetime,
-    #                          filename: str, security_type: str = "STK",
-    #                          currency: str = "USD"):
-    #     """Export historical data to CSV"""
-    #     contract = Contract(
-    #         symbol=symbol,
-    #         security_type=security_type,
-    #         exchange=exchange,
-    #         currency=currency
-    #     )
-    #
-    #     self.data_manager.export_data(contract, start_date, end_date, "1 hour", filename)
 
     def get_order_history(self, symbol: Optional[str] = None,
                          start_date: Optional[datetime] = None,

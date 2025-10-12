@@ -56,6 +56,7 @@ class OrderManager:
 
     def _init_database(self):
         """Initialize SQLite database for order storage"""
+        print(f"Initializing db ${self.db_path}...")
         with sqlite3.connect(self.db_path) as conn:
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS orders (
@@ -97,6 +98,7 @@ class OrderManager:
                     FOREIGN KEY (order_id) REFERENCES orders (order_id)
                 )
             """)
+        print("DB initialized....")
 
     def add_broker(self, name: str, broker: BrokerInterface):
         """Add a broker for order management"""
@@ -257,6 +259,7 @@ class OrderManager:
 
     def _save_order(self, order: ManagedOrder):
         """Save order to database"""
+        print(f"inserting order {order.order_id}")
         with sqlite3.connect(self.db_path) as conn:
             conn.execute("""
                 INSERT OR REPLACE INTO orders 

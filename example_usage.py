@@ -102,55 +102,55 @@ def main():
         # Let it run for a few seconds to see market data
         #time.sleep(10)
 
-        # # Example 3: Submit Orders
-        # print_section("Order Management Examples")
-        #
-        # # Submit a limit buy order
-        # print("Submitting limit buy order for 100 AAPL shares...")
-        # current_price = hist_data['close'].iloc[-1] if not hist_data.empty else 150.0
-        # limit_price = 255.46 #current_price #* 0.99  # 1% below current price
-        #
-        # buy_order_id = trading_system.submit_limit_order(
-        #     symbol="AAPL",
-        #     exchange="SMART",
-        #     action="BUY",
-        #     quantity=100,
-        #     limit_price=limit_price,
-        #     broker_name="ib"
-        # )
-        #
-        # print(f"Buy order submitted with ID: {buy_order_id}")
-        #
-        # # Submit a limit sell order
-        # print("Submitting limit sell order for 50 AAPL shares...")
-        # sell_limit_price = 255.46 #current_price * 1.01  # 1% above current price
-        #
-        # sell_order_id = trading_system.submit_limit_order(
-        #     symbol="AAPL",
-        #     exchange="SMART",
-        #     action="SELL",
-        #     quantity=50,
-        #     limit_price=sell_limit_price,
-        #     broker_name="ib"
-        # )
-        #
-        # print(f"Sell order submitted with ID: {sell_order_id}")
-        #
-        # # Wait a moment for order updates
-        # time.sleep(3)
-        #
-        # # Check order status
-        # print("\nChecking order status...")
-        # buy_status = trading_system.get_order_status(buy_order_id)
-        # sell_status = trading_system.get_order_status(sell_order_id)
-        #
-        # print(f"Buy Order Status: {buy_status.get('status', 'Unknown')}")
-        # print(f"Sell Order Status: {sell_status.get('status', 'Unknown')}")
-        #
-        # # Get all orders
-        # all_orders = trading_system.get_all_orders()
-        # print(f"\nTotal orders in system: {len(all_orders)}")
-        #
+        # Example 3: Submit Orders
+        print_section("Order Management Examples")
+
+        # Submit a limit buy order
+        print("Submitting limit buy order for 100 AAPL shares...")
+        current_price = hist_data['close'].iloc[-1] if not hist_data.empty else 150.0
+        limit_price = 255.46 #current_price #* 0.99  # 1% below current price
+
+        buy_order_id = trading_system.submit_limit_order(
+            symbol="AAPL",
+            exchange="SMART",
+            action="BUY",
+            quantity=100,
+            limit_price=limit_price,
+            broker_name="ib"
+        )
+
+        print(f"Buy order submitted with ID: {buy_order_id}")
+
+        # Submit a limit sell order
+        print("Submitting limit sell order for 50 AAPL shares...")
+        sell_limit_price = 255.46 #current_price * 1.01  # 1% above current price
+
+        sell_order_id = trading_system.submit_limit_order(
+            symbol="AAPL",
+            exchange="SMART",
+            action="SELL",
+            quantity=50,
+            limit_price=sell_limit_price,
+            broker_name="ib"
+        )
+
+        print(f"Sell order submitted with ID: {sell_order_id}")
+
+        # Wait a moment for order updates
+        time.sleep(3)
+
+        # Check order status
+        print("\nChecking order status...")
+        buy_status = trading_system.get_order_status(buy_order_id)
+        sell_status = trading_system.get_order_status(sell_order_id)
+
+        print(f"Buy Order Status: {buy_status.get('status', 'Unknown')}")
+        print(f"Sell Order Status: {sell_status.get('status', 'Unknown')}")
+
+        # Get all orders
+        all_orders = trading_system.get_all_orders()
+        print(f"\nTotal orders in system: {len(all_orders)}")
+
         # # Example 4: Cancel Orders
         # print_section("Cancelling Orders")
         #
@@ -161,36 +161,36 @@ def main():
         # print(f"Cancelling sell order {sell_order_id}...")
         # cancel_success = trading_system.cancel_order(sell_order_id)
         # print(f"Cancel result: {'Success' if cancel_success else 'Failed'}")
-        #
-        # # Example 5: Account Information
-        # print_section("Account Information")
-        #
-        # account_info = trading_system.get_account_info("ib")
-        # if account_info:
-        #     print("Account Information:")
-        #     for key, value in account_info.items():
-        #         if isinstance(value, dict):
-        #             print(f"  {key}: {value.get('value', 'N/A')}")
-        #         else:
-        #             print(f"  {key}: {value}")
-        # else:
-        #     print("No account information available")
-        #
-        # # Example 6: Positions
-        # positions = trading_system.get_positions()
-        # print(f"\nCurrent Positions: {len(positions)}")
-        # for position in positions[:5]:  # Show first 5 positions
-        #     print(f"  {position.get('symbol', 'N/A')}: {position.get('position', 0)} shares")
-        #
-        # # Example 7: Order History
-        # print_section("Order History")
-        #
-        # order_history = trading_system.get_order_history()
-        # print(f"Total orders in history: {len(order_history)}")
-        #
-        # # Show recent orders
-        # for order in order_history[:3]:
-        #     print(f"  {order.get('symbol')} - {order.get('action')} {order.get('quantity')} - {order.get('status')}")
+
+        # Example 5: Account Information
+        print_section("Account Information")
+
+        account_info = trading_system.get_account_info("ib")
+        if account_info:
+            print("Account Information:")
+            for key, value in account_info.items():
+                if isinstance(value, dict):
+                    print(f"  {key}: {value.get('value', 'N/A')}")
+                else:
+                    print(f"  {key}: {value}")
+        else:
+            print("No account information available")
+
+        # Example 6: Positions
+        positions = trading_system.get_positions()
+        print(f"\nCurrent Positions: {len(positions)}")
+        for position in positions[:5]:  # Show first 5 positions
+            print(f"  {position.get('symbol', 'N/A')}: {position.get('position', 0)} shares")
+
+        # Example 7: Order History
+        print_section("Order History")
+
+        order_history = trading_system.get_order_history()
+        print(f"Total orders in history: {len(order_history)}")
+
+        # Show recent orders
+        for order in order_history[:3]:
+            print(f"  {order.get('symbol')} - {order.get('action')} {order.get('quantity')} - {order.get('status')}")
 
         while True:
             time.sleep(10)

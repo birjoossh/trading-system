@@ -27,11 +27,11 @@ A comprehensive, modular Python trading system designed to work with Interactive
 **BrokerFactory**: Factory pattern implementation for creating broker instances with proper configuration.
 
 ### Supported Features
-- **Order Types**: Market, Limit, Stop, Stop-Limit orders
-- **Asset Classes**: Stocks, Forex, Futures, Options, Commodities
-- **Time in Force**: DAY, GTC, IOC, FOK
+- **Order Types**: Market, Limit, Stop orders
+- **Asset Classes**: Stocks
+- **Time in Force**: GTC
 - **Position Tracking**: Real-time position monitoring
-- **Trade History**: Complete audit trail of all transactions
+- **Trade History**: Trade history
 
 ## Installation
 
