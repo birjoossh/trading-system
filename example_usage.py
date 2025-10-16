@@ -5,8 +5,8 @@ Demonstrates basic functionality with Interactive Brokers.
 import threading
 import time
 from datetime import datetime, timedelta
-from trading_system.main import TradingSystem
-from trading_system.config.config import Config
+from unified_trading_platform.trading_core.main import TradingSystem
+from unified_trading_platform.trading_core.config.config import Config
 
 def print_section(title):
     """Print a formatted section header"""

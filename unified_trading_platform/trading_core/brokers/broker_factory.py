@@ -4,7 +4,7 @@ Supports multiple brokers through a unified interface.
 """
 
 from typing import Dict, Type
-from trading_system.brokers.base_broker import BrokerInterface
+from unified_trading_platform.unified_trading_platform.trading_core.brokers.base_broker import BrokerInterface
 
 class BrokerFactory:
     """Factory for creating broker instances"""
@@ -45,3 +45,11 @@ except ImportError:
 # BrokerFactory.register_broker('alpaca', AlpacaBroker)
 # BrokerFactory.register_broker('td_ameritrade', TDBroker)
 # BrokerFactory.register_broker('binance', BinanceBroker)
+
+# Register Paper broker
+try:
+    from .paper_broker import PaperBroker
+    BrokerFactory.register_broker('paper', PaperBroker)
+    BrokerFactory.register_broker('sim', PaperBroker)
+except ImportError:
+    print("Paper broker not available")

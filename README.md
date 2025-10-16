@@ -84,13 +84,13 @@ pip install -e .
 ### Basic Usage Example
 
 ```python
-from trading_system.main import TradingSystem
+from trading_core.main import TradingSystem
 
 # Initialize the system
 trading_system = TradingSystem()
 
 # Add Interactive Brokers
-trading_system.add_broker(
+trading_core.add_broker(
     name="ib_paper",
     broker_type="ib",
     host="127.0.0.1",
@@ -99,7 +99,7 @@ trading_system.add_broker(
 )
 
 # Get historical data
-hist_data = trading_system.get_historical_data(
+hist_data = trading_core.get_historical_data(
     symbol="AAPL",
     exchange="SMART",
     duration="5 D",
@@ -109,7 +109,7 @@ hist_data = trading_system.get_historical_data(
 print(hist_data.head())
 
 # Submit a limit order
-order_id = trading_system.submit_limit_order(
+order_id = trading_core.submit_limit_order(
     symbol="AAPL",
     exchange="SMART", 
     action="BUY",
@@ -119,11 +119,11 @@ order_id = trading_system.submit_limit_order(
 )
 
 # Check order status
-status = trading_system.get_order_status(order_id)
+status = trading_core.get_order_status(order_id)
 print(f"Order status: {status}")
 
 # Clean shutdown
-trading_system.shutdown()
+trading_core.shutdown()
 ```
 
 ### Running the Examples
@@ -175,7 +175,7 @@ The main interface for the trading system.
 ### Contract Specification
 
 ```python
-from trading_system.brokers.base_broker import Contract
+from trading_core.brokers.base_broker import Contract
 
 contract = Contract(
     symbol="AAPL",           # Symbol
@@ -191,7 +191,7 @@ contract = Contract(
 ### Order Specification
 
 ```python
-from trading_system.brokers.base_broker import Order, OrderType, OrderAction
+from trading_core.brokers.base_broker import Order, OrderType, OrderAction
 
 order = Order(
     action=OrderAction.BUY,     # BUY or SELL
@@ -261,7 +261,7 @@ BrokerFactory.register_broker('alpaca', AlpacaBroker)
 
 3. **Use the new broker**:
 ```python
-trading_system.add_broker(
+trading_core.add_broker(
     name="alpaca_live",
     broker_type="alpaca",
     api_key="your_key",

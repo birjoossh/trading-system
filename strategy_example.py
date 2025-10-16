@@ -5,8 +5,8 @@ Demonstrates basic functionality with Interactive Brokers.
 
 import time
 from datetime import datetime, timedelta
-from trading_system.main import TradingSystem
-from trading_system.config.config import Config
+from unified_trading_platform.unified_trading_platform.trading_core.main import TradingSystem
+from unified_trading_platform.unified_trading_platform.trading_core.config.config import Config
 
 def print_section(title):
     """Print a formatted section header"""
@@ -39,7 +39,7 @@ def main():
     print_section("Adding Interactive Brokers")
     ib_config = config.get_broker_config("interactive_brokers")
 
-    success = trading_system.add_broker(
+    success = unified_trading_platform.trading_core.add_broker(
         name="ib_paper",
         broker_type="ib",
         host=ib_config.get("host", "127.0.0.1"),
@@ -52,15 +52,15 @@ def main():
         return
 
     # Register callbacks
-    trading_system.register_order_callback('order_filled', on_order_filled)
-    trading_system.register_order_callback('trade_executed', on_trade_executed)
+    unified_trading_platform.trading_core.register_order_callback('order_filled', on_order_filled)
+    unified_trading_platform.trading_core.register_order_callback('trade_executed', on_trade_executed)
 
     try:
         # Example 1: Get Historical Data
         print_section("Getting Historical Data")
 
         print("Fetching historical data for AAPL...")
-        hist_data = trading_system.get_historical_data(
+        hist_data = unified_trading_platform.trading_core.get_historical_data(
             symbol="AAPL",
             exchange="SMART",
             security_type="STK",
@@ -88,7 +88,7 @@ def main():
         print_section("Subscribing to Market Data")
 
         print("Subscribing to AAPL market data...")
-        trading_system.subscribe_market_data(
+        unified_trading_platform.trading_core.subscribe_market_data(
             symbol="AAPL",
             exchange="SMART",
             callback=on_market_data,
@@ -107,7 +107,7 @@ def main():
         current_price = hist_data['close'].iloc[-1] if not hist_data.empty else 150.0
         limit_price = current_price * 0.99  # 1% below current price
 
-        buy_order_id = trading_system.submit_limit_order(
+        buy_order_id = unified_trading_platform.trading_core.submit_limit_order(
             symbol="AAPL",
             exchange="SMART",
             action="BUY",
@@ -122,7 +122,7 @@ def main():
         print("Submitting limit sell order for 50 AAPL shares...")
         sell_limit_price = current_price * 1.01  # 1% above current price
 
-        sell_order_id = trading_system.submit_limit_order(
+        sell_order_id = unified_trading_platform.trading_core.submit_limit_order(
             symbol="AAPL",
             exchange="SMART",
             action="SELL",
@@ -138,31 +138,31 @@ def main():
 
         # Check order status
         print("\nChecking order status...")
-        buy_status = trading_system.get_order_status(buy_order_id)
-        sell_status = trading_system.get_order_status(sell_order_id)
+        buy_status = unified_trading_platform.trading_core.get_order_status(buy_order_id)
+        sell_status = unified_trading_platform.trading_core.get_order_status(sell_order_id)
 
         print(f"Buy Order Status: {buy_status.get('status', 'Unknown')}")
         print(f"Sell Order Status: {sell_status.get('status', 'Unknown')}")
 
         # Get all orders
-        all_orders = trading_system.get_all_orders()
+        all_orders = unified_trading_platform.trading_core.get_all_orders()
         print(f"\nTotal orders in system: {len(all_orders)}")
 
         # Example 4: Cancel Orders
         print_section("Cancelling Orders")
 
         print(f"Cancelling buy order {buy_order_id}...")
-        cancel_success = trading_system.cancel_order(buy_order_id)
+        cancel_success = unified_trading_platform.trading_core.cancel_order(buy_order_id)
         print(f"Cancel result: {'Success' if cancel_success else 'Failed'}")
 
         print(f"Cancelling sell order {sell_order_id}...")
-        cancel_success = trading_system.cancel_order(sell_order_id)
+        cancel_success = unified_trading_platform.trading_core.cancel_order(sell_order_id)
         print(f"Cancel result: {'Success' if cancel_success else 'Failed'}")
 
         # Example 5: Account Information
         print_section("Account Information")
 
-        account_info = trading_system.get_account_info("ib_paper")
+        account_info = unified_trading_platform.trading_core.get_account_info("ib_paper")
         if account_info:
             print("Account Information:")
             for key, value in account_info.items():
@@ -174,7 +174,7 @@ def main():
             print("No account information available")
 
         # Example 6: Positions
-        positions = trading_system.get_positions()
+        positions = unified_trading_platform.trading_core.get_positions()
         print(f"\nCurrent Positions: {len(positions)}")
         for position in positions[:5]:  # Show first 5 positions
             print(f"  {position.get('symbol', 'N/A')}: {position.get('position', 0)} shares")
@@ -182,7 +182,7 @@ def main():
         # Example 7: Order History
         print_section("Order History")
 
-        order_history = trading_system.get_order_history()
+        order_history = unified_trading_platform.trading_core.get_order_history()
         print(f"Total orders in history: {len(order_history)}")
 
         # Show recent orders
@@ -197,7 +197,7 @@ def main():
     finally:
         # Clean shutdown
         print_section("Shutting Down")
-        trading_system.shutdown()
+        unified_trading_platform.trading_core.shutdown()
 
 if __name__ == "__main__":
     main()
