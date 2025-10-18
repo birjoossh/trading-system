@@ -9,7 +9,7 @@ from datetime import datetime, timedelta
 from dataclasses import asdict
 import sqlite3
 
-from trading_system.brokers.base_broker import BrokerInterface, Contract, BarData, TickData
+from trading_core.brokers.base_broker import BrokerInterface, Contract, BarData, TickData
 
 
 class DataManager:

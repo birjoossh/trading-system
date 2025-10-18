@@ -6,7 +6,7 @@ Demonstrates REST client, WebSocket client, authentication, and rate limiting.
 import time
 import logging
 from typing import Dict, Any
-from trading_system.utils import (
+from trading_core.utils import (
     # REST Client
     create_rest_client, create_rest_client_builder,
     # Authentication

@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Literal, Tuple, Dict, List
 import pandas as pd
 import numpy as np
-from .utils import ensure_dir
+from utils import ensure_dir
 
 Scope = Literal["package", "leg"]
 

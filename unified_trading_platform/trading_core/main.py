@@ -7,10 +7,10 @@ from typing import Dict, List, Optional, Callable
 from datetime import datetime
 import pandas as pd
 
-from trading_system.brokers.broker_factory import BrokerFactory
-from trading_system.brokers.base_broker import Contract, Order, OrderType, OrderAction
-from trading_system.data.data_manager import DataManager
-from trading_system.orders.order_manager import OrderManager
+from trading_core.brokers.broker_factory import BrokerFactory
+from trading_core.brokers.base_broker import Contract, Order, OrderType, OrderAction
+from trading_core.data.data_manager import DataManager
+from trading_core.orders.order_manager import OrderManager
 
 class TradingSystem:
     """Main trading system class"""
