@@ -1,6 +1,8 @@
 from __future__ import annotations
 import dataclasses as dc
 from typing import Dict, List, Optional
+import json
+from pathlib import Path
 
 # ---------------------------
 # Strike selection spec
@@ -92,3 +94,107 @@ class StrategyConfig:
     lot_size: int = 50
     legs: List[LegSpec] = dc.field(default_factory=list)
     costs: Dict = dc.field(default_factory=lambda: {"per_lot_roundtrip": 0.0, "slippage_per_fill": 0.0})
+
+def load_strategy_config(strategy_name: str, strategies_dir: str = None) -> StrategyConfig:
+    """Load strategy configuration from JSON file"""
+    if strategies_dir is None:
+        # Default to the strategies directory relative to this file
+        current_dir = Path(__file__).parent
+        strategies_dir = current_dir.parent / "strategies"
+    
+    strategy_path = Path(strategies_dir) / f"{strategy_name}.json"
+    
+    if not strategy_path.exists():
+        raise FileNotFoundError(f"Strategy file not found: {strategy_path}")
+    
+    with open(strategy_path, 'r') as f:
+        config_dict = json.load(f)
+    
+    # Convert legs to LegSpec objects
+    legs = []
+    for leg_dict in config_dict.get('legs', []):
+        # Convert strike_criteria
+        sc_dict = leg_dict.get('strike_criteria', {})
+        strike_criteria = StrikeCriteria(
+            mode=sc_dict.get('mode', 'STRIKE_TYPE'),
+            params=sc_dict.get('params', {})
+        )
+        
+        # Convert risk config
+        risk_dict = leg_dict.get('risk', {})
+        target_dict = risk_dict.get('target', {})
+        sl_dict = risk_dict.get('sl', {})
+        trail_dict = risk_dict.get('trail', {})
+        
+        target = RiskRule(
+            enabled=target_dict.get('enabled', True),
+            basis=target_dict.get('basis', 'premium_pct'),
+            value=target_dict.get('value', 0.0)
+        )
+        
+        sl = RiskRule(
+            enabled=sl_dict.get('enabled', True),
+            basis=sl_dict.get('basis', 'premium_pct'),
+            value=sl_dict.get('value', 0.0)
+        )
+        
+        trail = TrailRule(
+            enabled=trail_dict.get('enabled', False),
+            basis=trail_dict.get('basis', 'points'),
+            value=trail_dict.get('value', 0.0)
+        )
+        
+        risk_config = RiskConfig(target=target, sl=sl, trail=trail)
+        
+        # Convert reentry rules
+        reentry_sl_dict = leg_dict.get('reentry_on_sl', {})
+        reentry_target_dict = leg_dict.get('reentry_on_target', {})
+        
+        reentry_sl = ReEntryRule(
+            enabled=reentry_sl_dict.get('enabled', False),
+            mode=reentry_sl_dict.get('mode', 'RE_ASAP'),
+            max_count=reentry_sl_dict.get('max_count', 0),
+            lazy_leg=reentry_sl_dict.get('lazy_leg')
+        )
+        
+        reentry_target = ReEntryRule(
+            enabled=reentry_target_dict.get('enabled', False),
+            mode=reentry_target_dict.get('mode', 'RE_ASAP'),
+            max_count=reentry_target_dict.get('max_count', 0),
+            lazy_leg=reentry_target_dict.get('lazy_leg')
+        )
+        
+        leg_spec = LegSpec(
+            segment=leg_dict.get('segment', 'Options'),
+            position=leg_dict.get('position', 'Sell'),
+            option_type=leg_dict.get('option_type', 'CE'),
+            expiry=leg_dict.get('expiry', 'Weekly'),
+            qty_lots=leg_dict.get('qty_lots', 1),
+            strike_criteria=strike_criteria,
+            risk=risk_config,
+            reentry_on_sl=reentry_sl,
+            reentry_on_target=reentry_target
+        )
+        legs.append(leg_spec)
+    
+    # Convert trail_to_be
+    trail_to_be_dict = config_dict.get('trail_to_be', {})
+    trail_to_be = TrailToBE(
+        enabled=trail_to_be_dict.get('enabled', False),
+        scope=trail_to_be_dict.get('scope', 'All'),
+        trigger=trail_to_be_dict.get('trigger', {"mode": "percent", "value": 30})
+    )
+    
+    return StrategyConfig(
+        strategy_type=config_dict.get('strategy_type', 'Intraday'),
+        underlying_from=config_dict.get('underlying_from', 'Cash'),
+        entry_time=config_dict.get('entry_time', '11:00'),
+        exit_time=config_dict.get('exit_time', '15:15'),
+        no_reentry_after=config_dict.get('no_reentry_after'),
+        overall_momentum=config_dict.get('overall_momentum'),
+        square_off_mode=config_dict.get('square_off_mode', 'Partial'),
+        trail_to_be=trail_to_be,
+        lot_size=config_dict.get('lot_size', 50),
+        legs=legs,
+        costs=config_dict.get('costs', {"per_lot_roundtrip": 0.0, "slippage_per_fill": 0.0})
+    )
