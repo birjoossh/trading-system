@@ -4,7 +4,7 @@ Supports multiple brokers through a unified interface.
 """
 
 from typing import Dict, Type
-from unified_trading_platform.unified_trading_platform.trading_core.brokers.base_broker import BrokerInterface
+from .base_broker import BrokerInterface
 
 class BrokerFactory:
     """Factory for creating broker instances"""

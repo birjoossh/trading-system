@@ -5,7 +5,7 @@ Implements the BrokerInterface for IB TWS/Gateway API.
 
 import threading
 import time
-from typing import List, Dict, Any, Callable
+from typing import List, Dict, Any, Callable, Optional
 from datetime import datetime
 
 try:
@@ -21,7 +21,9 @@ except ImportError:
 
 from ..base_broker import (
     BrokerInterface, Contract, Order, Trade, BarData, TickData,
-    OrderType, OrderAction, OrderStatus
+    OrderType, OrderAction, OrderStatus, SecurityType, OptionRight,
+    MarketDataType, TickType, MarketDataSubscription, MarketDataError,
+    OptionChain, Greeks
 )
 
 class IBBroker(BrokerInterface):
@@ -40,50 +42,70 @@ class IBBroker(BrokerInterface):
         self.next_order_id = None
         self.historical_data = {}
         self.market_data = {}
+        self.market_data_subscriptions = {}  # Enhanced market data tracking
         self.orders = {}
         self.positions = []
         self.account_info = {}  # unimplemented
         self.accounts = []
+        self.option_chains = {}  # Cache for option chains
+        self.requestid_cachekey = {} # a dict map the req id to option cache key
+        self.greeks_data = {}  # Cache for Greeks data
+        self.market_data_type = MarketDataType.DELAYED  # Default to delayed
         self._api_thread = None
         self._connected_event = threading.Event()
         self._lock = threading.RLock()
         print("done initialization....")
 
     def connect(self, host: str = "127.0.0.1", port: int = 7498, client_id: int = 1) -> bool:
-        """Connect to IB TWS/Gateway"""
-        print("here at ib_broker ...")
+        """Connect to IB TWS/Gateway with enhanced error handling"""
+        print(f"Attempting to connect to IB at {host}:{port} with client ID {client_id}")
         self.host = host
         self.port = port
         self.client_id = client_id
 
         if self.is_connected:
+            print("Already connected to IB")
             return True
         
         self._connected_event.clear()
         try:
             self.client.connect(host, port, client_id)
-            print("connection done")
+            print("Connection request sent to IB...")
+            
             # Start API thread
             self._api_thread = threading.Thread(target=self.client.run, daemon=True)
             self._api_thread.start()
+            
+            # Wait for connection with timeout
             if not self._connected_event.wait(timeout=10):
+                print("❌ Connection timeout - IB did not respond within 10 seconds")
                 try:
                     self.client.disconnect()
-                except Exception as e:
-                   pass
+                except Exception:
+                    pass
                 return False
+                
             self.is_connected = True
-            print(f"Connected to IB at {host}:{port} with client ID {client_id}")
+            print(f"✅ Successfully connected to IB at {host}:{port} with client ID {client_id}")
 
-            # nextValidId will signal _connected_event; we've already waited above
-
-            ## update the account info
-            # self.client.reqAccountUpdates(subscribe=True)
+            # Update account info
             self._req_account_updates()
             return True
 
         except Exception as e:
-            print(f"Connection error: {e}")
+            print(f"❌ Connection error: {e}")
+            if "502" in str(e):
+                print("\n💡 TROUBLESHOOTING TIPS:")
+                print("1. Make sure TWS or IB Gateway is running")
+                print("2. Check API settings in TWS:")
+                print("   - Edit → Global Configuration → API → Settings")
+                print("   - Enable 'ActiveX and Socket EClients'")
+                print("   - Note the 'Socket Port' number")
+                print("3. Try different ports:")
+                print("   - 4002: IB Gateway Simulated Trading")
+                print("   - 4001: IB Gateway Live Trading")
+                print("   - 7497: TWS Simulated Trading")
+                print("   - 7496: TWS Live Trading")
             return False
 
     def disconnect(self) -> bool:
@@ -105,13 +127,14 @@ class IBBroker(BrokerInterface):
         accounts = self.client.reqManagedAccts()
 
     def _create_ib_contract(self, contract: Contract) -> IBContract:
-        """Convert our Contract to IB Contract"""
+        """Convert our Contract to IB Contract with enhanced options support"""
         ib_contract = IBContract()
         ib_contract.symbol = contract.symbol
-        ib_contract.secType = contract.security_type
+        ib_contract.secType = contract.security_type.value
         ib_contract.exchange = contract.exchange
         ib_contract.currency = contract.currency
 
+        # Enhanced options support
         if contract.local_symbol:
             ib_contract.localSymbol = contract.local_symbol
         if contract.expiry:
@@ -119,9 +142,23 @@ class IBBroker(BrokerInterface):
         if contract.strike:
             ib_contract.strike = contract.strike
         if contract.right:
-            ib_contract.right = contract.right
+            ib_contract.right = contract.right.value
         if contract.multiplier:
             ib_contract.multiplier = contract.multiplier
+        if contract.trading_class:
+            ib_contract.tradingClass = contract.trading_class
+        if contract.primary_exchange:
+            ib_contract.primaryExchange = contract.primary_exchange
+        if contract.include_expired:
+            ib_contract.includeExpired = contract.include_expired
+        if contract.sec_id_type:
+            ib_contract.secIdType = contract.sec_id_type
+        if contract.sec_id:
+            ib_contract.secId = contract.sec_id
+        if contract.combo_legs:
+            ib_contract.comboLegs = contract.combo_legs
+        if contract.combo_legs_descrip:
+            ib_contract.comboLegsDescrip = contract.combo_legs_descrip
 
         return ib_contract
 
@@ -186,7 +223,7 @@ class IBBroker(BrokerInterface):
                         volume=bar.volume
                     )
                     bars.append(bar_data)
-                except (ValueError, AttributeError):
+                except (ValueError, AttributeError) as e:
                     print(f"Error parsing bar data: {e}")
                     continue
         finally:
@@ -259,13 +296,32 @@ class IBBroker(BrokerInterface):
         """Get account information"""
         return self.account_info
 
-    def subscribe_market_data(self, contract: Contract, callback: Callable) -> bool:
-        """Subscribe to market data"""
+    def subscribe_market_data(self, contract: Contract, callback: Callable, 
+                             market_data_type: MarketDataType = MarketDataType.DELAYED,
+                             snapshot: bool = False, regulatory_snapshot: bool = False,
+                             generic_tick_list: Optional[List[str]] = None) -> str:
+        """Subscribe to market data with enhanced options support"""
         if not self.is_connected:
             raise Exception("Not connected to broker")
 
-        req_id = len(self.market_data) + 2000
+        req_id = len(self.market_data_subscriptions) + 2000
+        subscription_id = f"sub_{req_id}"
+        
+        # Create subscription object
+        subscription = MarketDataSubscription(
+            contract=contract,
+            subscription_id=subscription_id,
+            market_data_type=market_data_type,
+            snapshot=snapshot,
+            regulatory_snapshot=regulatory_snapshot,
+            generic_tick_list=generic_tick_list or [],
+            callback=callback,
+            is_active=True
+        )
+        
+        self.market_data_subscriptions[subscription_id] = subscription
         self.market_data[req_id] = {
+            'subscription_id': subscription_id,
             'contract': contract,
             'callback': callback,
             'data': {}
@@ -273,29 +329,131 @@ class IBBroker(BrokerInterface):
 
         ib_contract = self._create_ib_contract(contract)
         try:
-            self.client.reqMarketDataType(3) # 1=live, 2=frozen, 3=delayed, 4=delayed-frozen # realtime is not free
-            snapshot = False
-            regulatorySnapshot = False # not free
-            self.client.reqMktData(req_id, ib_contract, "", snapshot, regulatorySnapshot, [])
-            return True
+            # Set market data type
+            md_type_map = {
+                MarketDataType.LIVE: 1,
+                MarketDataType.FROZEN: 2,
+                MarketDataType.DELAYED: 3,
+                MarketDataType.DELAYED_FROZEN: 4
+            }
+            self.client.reqMarketDataType(md_type_map.get(market_data_type, 3))
+            
+            # Request market data
+            self.client.reqMktData(req_id, ib_contract, "", snapshot, regulatory_snapshot, generic_tick_list or [])
+            return subscription_id
         except Exception as e:
             print(f"Error subscribing to market data: {e}")
+            if subscription_id in self.market_data_subscriptions:
+                del self.market_data_subscriptions[subscription_id]
             if req_id in self.market_data:
                 del self.market_data[req_id]
-            return False
+            raise e
 
-    def unsubscribe_market_data(self, contract: Contract) -> bool:
-        """Unsubscribe from market data"""
-        # Find and cancel subscription
-        for req_id, data in self.market_data.items():
-            if data['contract'].symbol == contract.symbol and data['exchange'] == contract.exchange:
-                try:
-                    self.client.cancelMktData(req_id)
-                    del self.market_data[req_id]
-                    removed = True
-                except Exception as e:
-                    print(f"Error unsubscribing from market data: {e}")
-        return removed
+    def unsubscribe_market_data(self, subscription_id: str) -> bool:
+        """Unsubscribe from market data using subscription ID"""
+        if subscription_id not in self.market_data_subscriptions:
+            return False
+            
+        subscription = self.market_data_subscriptions[subscription_id]
+        subscription.is_active = False
+        
+        # Find the request ID for this subscription
+        req_id = None
+        for rid, data in self.market_data.items():
+            if data.get('subscription_id') == subscription_id:
+                req_id = rid
+                break
+                
+        if req_id is not None:
+            try:
+                self.client.cancelMktData(req_id)
+                del self.market_data[req_id]
+            except Exception as e:
+                print(f"Error unsubscribing from market data: {e}")
+                return False
+        
+        del self.market_data_subscriptions[subscription_id]
+        return True
+
+    def get_market_data_subscriptions(self) -> List[MarketDataSubscription]:
+        """Get all active market data subscriptions"""
+        return [sub for sub in self.market_data_subscriptions.values() if sub.is_active]
+
+    def get_option_chain(self, underlying_contract: Contract, 
+                        expiration_dates: Optional[List[str]] = None,
+                        strikes: Optional[List[float]] = None) -> OptionChain:
+        """Get option chain for an underlying instrument"""
+        if not self.is_connected:
+            raise Exception("Not connected to broker")
+            
+        # Create cache key
+        cache_key = f"{underlying_contract.symbol}_{underlying_contract.exchange}"
+        
+        # Check cache first
+        if cache_key in self.option_chains:
+            cached_chain = self.option_chains[cache_key]
+            if (datetime.now() - cached_chain.last_updated).seconds < 300:  # 5 minute cache
+                return cached_chain
+        
+        # Request option chain from IB
+        req_id = len(self.option_chains) + 3000
+        ib_contract = self._create_ib_contract(underlying_contract)
+        
+        try:
+            # Request option chain
+            self.client.reqSecDefOptParams(req_id, underlying_contract.symbol, "", underlying_contract.security_type.value, underlying_contract.conId if hasattr(underlying_contract, 'conId') else 0)
+            self.requestid_cachekey[req_id] = cache_key
+            # Wait for response (this would be handled in the callback)
+            # For now, return a placeholder
+            option_chain = OptionChain(
+                underlying_symbol=underlying_contract.symbol,
+                underlying_contract=underlying_contract,
+                expiration_dates=expiration_dates or [],
+                strikes=strikes or [],
+                options=[]
+            )
+            
+            self.option_chains[cache_key] = option_chain
+            return option_chain
+            
+        except Exception as e:
+            print(f"Error getting option chain: {e}")
+            raise e
+
+    def get_greeks(self, option_contract: Contract) -> Greeks:
+        """Get options Greeks for a specific option contract"""
+        if not self.is_connected:
+            raise Exception("Not connected to broker")
+            
+        # Check cache first
+        cache_key = f"{option_contract.symbol}_{option_contract.strike}_{option_contract.right}_{option_contract.expiry}"
+        if cache_key in self.greeks_data:
+            cached_greeks = self.greeks_data[cache_key]
+            if (datetime.now() - cached_greeks.timestamp).seconds < 60:  # 1 minute cache
+                return cached_greeks
+        
+        # Request Greeks from market data
+        # This would typically be done by subscribing to market data with Greeks
+        # For now, return a placeholder
+        greeks = Greeks()
+        self.greeks_data[cache_key] = greeks
+        return greeks
+
+    def set_market_data_type(self, market_data_type: MarketDataType) -> bool:
+        """Set the market data type (live, delayed, etc.)"""
+        try:
+            md_type_map = {
+                MarketDataType.LIVE: 1,
+                MarketDataType.FROZEN: 2,
+                MarketDataType.DELAYED: 3,
+                MarketDataType.DELAYED_FROZEN: 4
+            }
+            self.client.reqMarketDataType(md_type_map.get(market_data_type, 3))
+            self.market_data_type = market_data_type
+            return True
+        except Exception as e:
+            print(f"Error setting market data type: {e}")
+            return False
 
 class IBClient(EWrapper, EClient):
     """IB API client wrapper"""
@@ -322,52 +480,103 @@ class IBClient(EWrapper, EClient):
         pass
 
     def tickPrice(self, reqId: int, tickType: int, price: float, attrib):
-        """Receive tick price data"""
+        """Receive tick price data with enhanced options support"""
         if reqId in self.broker.market_data:
             data = self.broker.market_data[reqId]
+            contract = data['contract']
 
-            # Map tick types to our format
-            ## live ticks
-            if tickType == 1:  # Bid
-                data['data']['bid'] = price
-            elif tickType == 2:  # Ask
-                data['data']['ask'] = price
-            elif tickType == 4:  # Last
-                data['data']['last'] = price
-            ## delayed ticks
-            if tickType == 66:  # Delayed Bid
-                data['data']['bid'] = price
-            elif tickType == 67:  # Delayed Ask
-                data['data']['ask'] = price
-            elif tickType == 68:  # Delayed Last
-                data['data']['last'] = price
+            # Enhanced tick type mapping for options and stocks
+            tick_mapping = {
+                # Live ticks
+                1: ('bid', TickType.BID),
+                2: ('ask', TickType.ASK),
+                4: ('last', TickType.LAST),
+                6: ('high', TickType.HIGH),
+                7: ('low', TickType.LOW),
+                9: ('close', TickType.CLOSE),
+                14: ('open', TickType.OPEN),
+                # Delayed ticks
+                66: ('bid', TickType.BID),
+                67: ('ask', TickType.ASK),
+                68: ('last', TickType.LAST),
+                70: ('high', TickType.HIGH),
+                71: ('low', TickType.LOW),
+                75: ('close', TickType.CLOSE),
+                76: ('open', TickType.OPEN),
+                # Options-specific ticks
+                101: ('delta', TickType.DELTA),
+                106: ('gamma', TickType.GAMMA),
+                111: ('theta', TickType.THETA),
+                115: ('vega', TickType.VEGA),
+                117: ('rho', TickType.RHO),
+                104: ('implied_volatility', TickType.IMPLIED_VOLATILITY),
+                100: ('option_price', TickType.OPTION_PRICE)
+            }
 
-            bid = data['data'].get('bid')
-            ask = data['data'].get('ask')
-            last = data['data'].get('last')
+            if tickType in tick_mapping:
+                field_name, tick_type = tick_mapping[tickType]
+                data['data'][field_name] = price
+                data['data'][f'{field_name}_tick_type'] = tick_type
 
-            if (bid is not None) or (ask is not None) or (last is not None):
-                # Create tick data and call callback
-                tick_data = TickData(
-                    timestamp=datetime.now(),
-                    exchange=data['contract'].exchange,
-                    security_type=data['contract'].security_type,
-                    currency=data['contract'].currency,
-                    symbol=data['contract'].symbol,
-                    bid=bid,
-                    ask=ask,
-                    last=last
-                )
+            # Update subscription timestamp
+            subscription_id = data.get('subscription_id')
+            if subscription_id and subscription_id in self.broker.market_data_subscriptions:
+                self.broker.market_data_subscriptions[subscription_id].last_update = datetime.now()
 
-                if data['callback']:
-                    data['callback'](tick_data)
+            # Create enhanced tick data
+            tick_data = TickData(
+                timestamp=datetime.now(),
+                exchange=contract.exchange,
+                security_type=contract.security_type,
+                currency=contract.currency,
+                symbol=contract.symbol,
+                bid=data['data'].get('bid'),
+                ask=data['data'].get('ask'),
+                last=data['data'].get('last'),
+                high=data['data'].get('high'),
+                low=data['data'].get('low'),
+                open=data['data'].get('open'),
+                close=data['data'].get('close'),
+                # Options-specific data
+                delta=data['data'].get('delta'),
+                gamma=data['data'].get('gamma'),
+                theta=data['data'].get('theta'),
+                vega=data['data'].get('vega'),
+                rho=data['data'].get('rho'),
+                implied_volatility=data['data'].get('implied_volatility'),
+                option_price=data['data'].get('option_price'),
+                tick_type=data['data'].get('last_tick_type'),
+                market_data_type=self.broker.market_data_type,
+                raw_data=data['data'].copy()
+            )
+
+            if data['callback']:
+                data['callback'](tick_data)
 
     def tickSize(self, reqId: int, tickType: int, size: int):
-        """Receive tick size data"""
-        if reqId in self.broker.market_data :
+        """Receive tick size data with enhanced support"""
+        if reqId in self.broker.market_data:
             data = self.broker.market_data[reqId]
-            if tickType == 8 or tickType == 74: # Volume (8 = live last size updates, 74 = delayed volume)
-                data['data']['volume'] = size
+            
+            # Enhanced size tick mapping
+            size_mapping = {
+                # Live size ticks
+                0: 'bid_size',
+                3: 'ask_size', 
+                5: 'last_size',
+                8: 'volume',
+                # Delayed size ticks
+                69: 'bid_size',
+                70: 'ask_size',
+                72: 'last_size',
+                74: 'volume',
+                # Options-specific size ticks
+                21: 'open_interest'
+            }
+            
+            if tickType in size_mapping:
+                field_name = size_mapping[tickType]
+                data['data'][field_name] = size
 
     def orderStatus(self, orderId: OrderId, status: str, filled: float,
                    remaining: float, avgFillPrice: float, permId: int,
@@ -465,7 +674,56 @@ class IBClient(EWrapper, EClient):
     def managedAccounts(self, accountsList:str):
         self.accounts = accountsList
 
+    def securityDefinitionOptionParameter(self, reqId: int, exchange: str, underlyingConId: int, 
+                                          tradingClass: str, multiplier: str, expirations: set, 
+                                          strikes: set):
+        """Receive option chain data"""
+        if reqId in self.broker.requestid_cachekey:
+            option_cache = self.broker.requestid_cachekey[reqId]
+            # Convert to our OptionChain format
+            expiration_dates = list(expirations)
+            strike_prices = list(strikes)
+
+            # Create underlying contract
+            underlying_contract = Contract(
+                symbol=self.broker.option_chains[option_cache].underlying_contract.symbol,  # Will be filled by the calling method
+                security_type=self.broker.option_chains[option_cache].underlying_contract.security_type,
+                exchange=exchange,
+                currency=self.broker.option_chains[option_cache].underlying_contract.currency  # Default currency
+            )
+            
+            option_chain = OptionChain(
+                underlying_symbol=underlying_contract.symbol, 
+                underlying_contract=underlying_contract,
+                expiration_dates=expiration_dates,
+                strikes=strike_prices,
+                options=[]  # Individual option contracts would be created separately
+            )
+            
+            # Store in cache
+            cache_key = f"chain_{reqId}"
+            self.broker.option_chains[cache_key] = option_chain
+
+    def securityDefinitionOptionalParameterEnd(self, reqId: int):
+        """Option chain data complete"""
+        pass
+
     def error(self, reqId: int, errorCode: int, errorString: str, advancedOrderRejectJson: str = ""):
-        """Handle errors"""
+        """Handle errors with enhanced market data error tracking"""
         if errorCode not in [2104, 2106, 2158]:  # Ignore harmless messages
             print(f"IB Error {errorCode}: {errorString}")
+            
+            # Track market data errors
+            if reqId in self.broker.market_data:
+                data = self.broker.market_data[reqId]
+                subscription_id = data.get('subscription_id')
+                
+                if subscription_id:
+                    error = MarketDataError(
+                        subscription_id=subscription_id,
+                        error_code=errorCode,
+                        error_message=errorString
+                    )
+                    
+                    # Trigger error callback
+                    self.broker.trigger_callback('market_data_error', error)
