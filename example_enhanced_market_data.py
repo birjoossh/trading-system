@@ -48,10 +48,7 @@ def main():
     
     # Try different ports in order of preference
     ports_to_try = [
-        (4002, "IB Gateway Simulated Trading"),
-        (4001, "IB Gateway Live Trading"), 
-        (7497, "TWS Simulated Trading"),
-        (7496, "TWS Live Trading")
+        (4002, "IB Gateway Simulated Trading")
     ]
     
     broker = None
@@ -74,18 +71,6 @@ def main():
     if not connected:
         print("\n" + "="*60)
         print("❌ FAILED TO CONNECT TO INTERACTIVE BROKERS")
-        print("="*60)
-        print("Please ensure the following:")
-        print("1. TWS or IB Gateway is running")
-        print("2. API settings are enabled:")
-        print("   - Go to TWS: Edit → Global Configuration → API → Settings")
-        print("   - Check 'Enable ActiveX and Socket EClients'")
-        print("   - Note the 'Socket Port' number")
-        print("3. Try the following ports:")
-        for port, desc in ports_to_try:
-            print(f"   - Port {port}: {desc}")
-        print("\nFor simulated trading, use IB Gateway on port 4002")
-        print("For live trading, use IB Gateway on port 4001")
         return
     
     try:
@@ -96,29 +81,29 @@ def main():
         broker.set_market_data_type(MarketDataType.DELAYED)
         
         # Example 1: Subscribe to stock market data
-        print("\n1. Subscribing to AAPL stock market data...")
-        stock_contract = Contract(
-            symbol="AAPL",
-            security_type=SecurityType.STOCK,
-            exchange="SMART",
-            currency="USD"
-        )
+        # print("\n1. Subscribing to AAPL stock market data...")
+        # stock_contract = Contract(
+        #     symbol="AAPL",
+        #     security_type=SecurityType.STOCK,
+        #     exchange="NYSE",
+        #     currency="USD"
+        # )
         
-        stock_subscription_id = broker.subscribe_market_data(
-            contract=stock_contract,
-            callback=market_data_callback,
-            market_data_type=MarketDataType.DELAYED
-        )
-        print(f"Stock subscription ID: {stock_subscription_id}")
+        # stock_subscription_id = broker.subscribe_market_data(
+        #     contract=stock_contract,
+        #     callback=market_data_callback,
+        #     market_data_type=MarketDataType.DELAYED
+        # )
+        # print(f"Stock subscription ID: {stock_subscription_id}")
         
         # Example 2: Subscribe to options market data
         print("\n2. Subscribing to AAPL options market data...")
         option_contract = Contract(
             symbol="AAPL",
             security_type=SecurityType.OPTION,
-            exchange="SMART",
+            exchange="SMART",  # Use SMART for options
             currency="USD",
-            expiry="20241220",  # December 20, 2024
+            expiry="20251024",
             strike=150.0,
             right=OptionRight.CALL,
             multiplier="100"
@@ -127,36 +112,36 @@ def main():
         option_subscription_id = broker.subscribe_market_data(
             contract=option_contract,
             callback=market_data_callback,
-            market_data_type=MarketDataType.DELAYED,
-            generic_tick_list=["101", "106", "111", "115", "117"]  # Greeks
+            market_data_type=MarketDataType.DELAYED
+            # Start with NO generic tick list to isolate the issue
         )
         print(f"Option subscription ID: {option_subscription_id}")
         
-        # Example 3: Get option chain
-        print("\n3. Getting AAPL option chain...")
-        try:
-            option_chain = broker.get_option_chain(stock_contract)
-            print(f"Option chain for {option_chain.underlying_symbol}:")
-            print(f"  Expiration dates: {option_chain.expiration_dates[:5]}...")  # Show first 5
-            print(f"  Strikes: {option_chain.strikes[:10]}...")  # Show first 10
-        except Exception as e:
-            print(f"Error getting option chain: {e}")
+        # # Example 3: Get option chain
+        # print("\n3. Getting AAPL option chain...")
+        # try:
+        #     option_chain = broker.get_option_chain(stock_contract)
+        #     print(f"Option chain for {option_chain.underlying_symbol}:")
+        #     print(f"  Expiration dates: {option_chain.expiration_dates[:5]}...")  # Show first 5
+        #     print(f"  Strikes: {option_chain.strikes[:10]}...")  # Show first 10
+        # except Exception as e:
+        #     print(f"Error getting option chain: {e}")
         
-        # Example 4: Get Greeks for option
-        print("\n4. Getting Greeks for AAPL option...")
-        try:
-            greeks = broker.get_greeks(option_contract)
-            print(f"Greeks for {option_contract.symbol} {option_contract.strike} {option_contract.right.value}:")
-            if greeks.delta is not None:
-                print(f"  Delta: {greeks.delta:.4f}")
-            if greeks.gamma is not None:
-                print(f"  Gamma: {greeks.gamma:.4f}")
-            if greeks.theta is not None:
-                print(f"  Theta: {greeks.theta:.4f}")
-            if greeks.vega is not None:
-                print(f"  Vega: {greeks.vega:.4f}")
-        except Exception as e:
-            print(f"Error getting Greeks: {e}")
+        # # Example 4: Get Greeks for option
+        # print("\n4. Getting Greeks for AAPL option...")
+        # try:
+        #     greeks = broker.get_greeks(option_contract)
+        #     print(f"Greeks for {option_contract.symbol} {option_contract.strike} {option_contract.right.value}:")
+        #     if greeks.delta is not None:
+        #         print(f"  Delta: {greeks.delta:.4f}")
+        #     if greeks.gamma is not None:
+        #         print(f"  Gamma: {greeks.gamma:.4f}")
+        #     if greeks.theta is not None:
+        #         print(f"  Theta: {greeks.theta:.4f}")
+        #     if greeks.vega is not None:
+        #         print(f"  Vega: {greeks.vega:.4f}")
+        # except Exception as e:
+        #     print(f"Error getting Greeks: {e}")
         
         # Example 5: List active subscriptions
         print("\n5. Active market data subscriptions:")
@@ -165,8 +150,8 @@ def main():
             print(f"  {sub.subscription_id}: {sub.contract.symbol} ({sub.contract.security_type.value})")
         
         # Let market data flow for a few seconds
-        print("\n6. Receiving market data for 10 seconds...")
-        time.sleep(10)
+        print("\n6. Receiving market data for 100 seconds...")
+        time.sleep(100)
         
         # Example 6: Unsubscribe from market data
         print("\n7. Unsubscribing from market data...")

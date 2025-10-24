@@ -29,7 +29,7 @@ from ..base_broker import (
 class IBBroker(BrokerInterface):
     """Interactive Brokers implementation"""
 
-    def __init__(self, host="127.0.0.1", port=7498, client_id=1):
+    def __init__(self, host, port, client_id=1):
         print("Initializing...")
         super().__init__()
         if not IB_AVAILABLE:
@@ -56,12 +56,9 @@ class IBBroker(BrokerInterface):
         self._lock = threading.RLock()
         print("done initialization....")
 
-    def connect(self, host: str = "127.0.0.1", port: int = 7498, client_id: int = 1) -> bool:
-        """Connect to IB TWS/Gateway with enhanced error handling"""
-        print(f"Attempting to connect to IB at {host}:{port} with client ID {client_id}")
-        self.host = host
-        self.port = port
-        self.client_id = client_id
+    def connect(self) -> bool:
+        """Connect to IB TWS/Gateway ..."""
+        print(f"Attempting to connect to IB at {self.host}:{self.port} with client ID {self.client_id}")
 
         if self.is_connected:
             print("Already connected to IB")
@@ -69,7 +66,7 @@ class IBBroker(BrokerInterface):
         
         self._connected_event.clear()
         try:
-            self.client.connect(host, port, client_id)
+            self.client.connect(self.host, self.port, self.client_id)
             print("Connection request sent to IB...")
             
             # Start API thread
@@ -77,16 +74,16 @@ class IBBroker(BrokerInterface):
             self._api_thread.start()
             
             # Wait for connection with timeout
-            if not self._connected_event.wait(timeout=10):
+            if not self._connected_event.wait(timeout=20):
                 print("❌ Connection timeout - IB did not respond within 10 seconds")
                 try:
                     self.client.disconnect()
                 except Exception:
-                    pass
+                   pass
                 return False
                 
             self.is_connected = True
-            print(f"✅ Successfully connected to IB at {host}:{port} with client ID {client_id}")
+            print(f"✅ Successfully connected to IB at {self.host}:{self.port} with client ID {self.client_id}")
 
             # Update account info
             self._req_account_updates()
@@ -95,17 +92,7 @@ class IBBroker(BrokerInterface):
         except Exception as e:
             print(f"❌ Connection error: {e}")
             if "502" in str(e):
-                print("\n💡 TROUBLESHOOTING TIPS:")
-                print("1. Make sure TWS or IB Gateway is running")
-                print("2. Check API settings in TWS:")
-                print("   - Edit → Global Configuration → API → Settings")
-                print("   - Enable 'ActiveX and Socket EClients'")
-                print("   - Note the 'Socket Port' number")
-                print("3. Try different ports:")
-                print("   - 4002: IB Gateway Simulated Trading")
-                print("   - 4001: IB Gateway Live Trading")
-                print("   - 7497: TWS Simulated Trading")
-                print("   - 7496: TWS Live Trading")
+                print("Make sure TWS or IB Gateway is running 4002: IB Gateway Simulated Trading")
             return False
 
     def disconnect(self) -> bool:
@@ -159,6 +146,17 @@ class IBBroker(BrokerInterface):
             ib_contract.comboLegs = contract.combo_legs
         if contract.combo_legs_descrip:
             ib_contract.comboLegsDescrip = contract.combo_legs_descrip
+
+        # Debug output for options
+        if contract.security_type == SecurityType.OPTION:
+            print(f"Created IB option contract:")
+            print(f"  Symbol: {ib_contract.symbol}")
+            print(f"  SecType: {ib_contract.secType}")
+            print(f"  Exchange: {ib_contract.exchange}")
+            print(f"  Expiry: {ib_contract.lastTradeDateOrContractMonth}")
+            print(f"  Strike: {ib_contract.strike}")
+            print(f"  Right: {ib_contract.right}")
+            print(f"  Multiplier: {ib_contract.multiplier}")
 
         return ib_contract
 
@@ -314,11 +312,11 @@ class IBBroker(BrokerInterface):
             market_data_type=market_data_type,
             snapshot=snapshot,
             regulatory_snapshot=regulatory_snapshot,
-            generic_tick_list=generic_tick_list or [],
+            generic_tick_list=",".join(generic_tick_list or []),
             callback=callback,
             is_active=True
         )
-        
+        print("subscription.generic_tick_list = ", subscription.generic_tick_list)
         self.market_data_subscriptions[subscription_id] = subscription
         self.market_data[req_id] = {
             'subscription_id': subscription_id,
@@ -337,9 +335,8 @@ class IBBroker(BrokerInterface):
                 MarketDataType.DELAYED_FROZEN: 4
             }
             self.client.reqMarketDataType(md_type_map.get(market_data_type, 3))
+            self.client.reqMktData(req_id, ib_contract, subscription.generic_tick_list, snapshot, regulatory_snapshot, generic_tick_list or [])
             
-            # Request market data
-            self.client.reqMktData(req_id, ib_contract, "", snapshot, regulatory_snapshot, generic_tick_list or [])
             return subscription_id
         except Exception as e:
             print(f"Error subscribing to market data: {e}")
@@ -353,7 +350,7 @@ class IBBroker(BrokerInterface):
         """Unsubscribe from market data using subscription ID"""
         if subscription_id not in self.market_data_subscriptions:
             return False
-            
+
         subscription = self.market_data_subscriptions[subscription_id]
         subscription.is_active = False
         
@@ -365,11 +362,11 @@ class IBBroker(BrokerInterface):
                 break
                 
         if req_id is not None:
-            try:
-                self.client.cancelMktData(req_id)
-                del self.market_data[req_id]
-            except Exception as e:
-                print(f"Error unsubscribing from market data: {e}")
+                try:
+                    self.client.cancelMktData(req_id)
+                    del self.market_data[req_id]
+                except Exception as e:
+                    print(f"Error unsubscribing from market data: {e}")
                 return False
         
         del self.market_data_subscriptions[subscription_id]
@@ -402,9 +399,8 @@ class IBBroker(BrokerInterface):
         try:
             # Request option chain
             self.client.reqSecDefOptParams(req_id, underlying_contract.symbol, "", underlying_contract.security_type.value, underlying_contract.conId if hasattr(underlying_contract, 'conId') else 0)
-            self.requestid_cachekey[req_id] = cache_key
-            # Wait for response (this would be handled in the callback)
-            # For now, return a placeholder
+            # Wait for response till timeout
+            
             option_chain = OptionChain(
                 underlying_symbol=underlying_contract.symbol,
                 underlying_contract=underlying_contract,
@@ -524,8 +520,8 @@ class IBClient(EWrapper, EClient):
                 self.broker.market_data_subscriptions[subscription_id].last_update = datetime.now()
 
             # Create enhanced tick data
-            tick_data = TickData(
-                timestamp=datetime.now(),
+                tick_data = TickData(
+                    timestamp=datetime.now(),
                 exchange=contract.exchange,
                 security_type=contract.security_type,
                 currency=contract.currency,
@@ -548,10 +544,10 @@ class IBClient(EWrapper, EClient):
                 tick_type=data['data'].get('last_tick_type'),
                 market_data_type=self.broker.market_data_type,
                 raw_data=data['data'].copy()
-            )
+                )
 
-            if data['callback']:
-                data['callback'](tick_data)
+                if data['callback']:
+                    data['callback'](tick_data)
 
     def tickSize(self, reqId: int, tickType: int, size: int):
         """Receive tick size data with enhanced support"""
