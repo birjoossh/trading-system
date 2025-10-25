@@ -4,8 +4,15 @@ Corrected options market data test with valid contracts and tick types
 This addresses the issues found in the previous test.
 """
 
+import imp
+from re import L
 import time
+from pprint import pprint
+from dataclasses import asdict
 from datetime import datetime
+from typing import List, Dict, Any, Callable, Optional
+
+from ibapi.client import BarData
 from unified_trading_platform.trading_core.brokers.interactive_brokers.ib_broker import IBBroker
 from unified_trading_platform.trading_core.brokers.base_broker import (
     Contract, SecurityType, OptionRight, MarketDataType
@@ -34,6 +41,80 @@ def options_callback(tick_data):
     
     print("-" * 40)
 
+def get_contract_details(broker, contract):
+    try:
+        details = broker.get_contract_details(contract)
+        print(f"Contract details: {asdict(details)}")
+        return details
+    except Exception as e:
+        print(f"Error getting contract details: {e}")
+
+def get_option_chain(broker, contract):
+    try:
+        option_chain = broker.get_option_chain(contract)
+        print(f"option chain : {asdict(option_chain)}")
+        return option_chain
+    except Exception as e:
+        print(f"Error getting contract details: {e}")
+
+def list_active_subscriptions(broker):
+    # Example 5: List active subscriptions
+    print("Active market data subscriptions:")
+    subscriptions = broker.get_market_data_subscriptions()
+    return subscriptions
+        
+def subscribe_market_data(broker, contract):
+    tick_list = [
+        # "100",  # Option bid price
+        # "101",  # Option ask price
+        # "104",  # Option last price
+        # "105",  # Option last size
+        # "106",  # Option high price
+        # "107",  # Option low price
+        # "108",  # Option volume
+        # "109",  # Option close price
+        # "110",  # Option open price
+        # "21",   # Open interest
+        # "22"   # Historical volatility
+    ]
+    # Test subscription without tick list
+    print("Testing option subscription (no tick list)...")
+    sub_id = broker.subscribe_market_data(
+        contract=contract,
+        callback=options_callback,
+        market_data_type=MarketDataType.DELAYED_FROZEN,
+        generic_tick_list = tick_list
+    )
+    print(f"✅ Option subscription successful: {sub_id}")
+    return sub_id
+    
+def get_historical_market_data(broker, contract):
+    print("Get historical market data...")
+    hist_data: List[BarData] = broker.get_historical_data(
+        contract=contract,
+        duration='5 D',
+        bar_size='1 hour',
+        what_to_show= 'TRADES'
+    )
+    return hist_data
+
+
+def get_option_greeks(broker, option_contract):
+    print("Getting Greeks for AAPL option...")
+    try:
+        greeks = broker.get_greeks(option_contract)
+        print(f"Greeks for {option_contract.symbol} {option_contract.strike} {option_contract.right.value}:")
+        if greeks.delta is not None:
+            print(f"  Delta: {greeks.delta:.4f}")
+        if greeks.gamma is not None:
+            print(f"  Gamma: {greeks.gamma:.4f}")
+        if greeks.theta is not None:
+            print(f"  Theta: {greeks.theta:.4f}")
+        if greeks.vega is not None:
+            print(f"  Vega: {greeks.vega:.4f}")
+    except Exception as e:
+        print(f"Error getting Greeks: {e}")
+
 def main():
     print("Corrected Options Market Data Test")
     print("=" * 40)
@@ -47,140 +128,53 @@ def main():
         if not broker.connect():
             print("❌ Failed to connect")
             return
-        
         print("✅ Connected successfully!")
         
-        # Test 1: Try to get option chain first to find valid contracts
         print("\n1. Getting option chain for SPY...")
         spy_underlying = Contract(
             symbol="SPY",
             security_type=SecurityType.STOCK,
-            exchange="SMART",
-            currency="USD"
+            exchange="",
+            currency="USD",
+            conId = 756733
         )
+        get_contract_details(broker, spy_underlying)
+
+        option_chain = get_option_chain(broker, spy_underlying)
+        expiry = option_chain.expiration_dates[0]
+        strike = option_chain.strikes[0]
+
+        spy_option_contract = Contract(
+            symbol="SPY",
+            security_type=SecurityType.OPTION,
+            exchange="SMART",
+            currency="USD",
+            expiry = '20251209',
+            # strike=400.0,
+            right=OptionRight.CALL,
+            multiplier="100"
+        )
+        #sub_id = subscribe_market_data(broker, spy_option_contract) 
+
+        subscriptions = list_active_subscriptions(broker)
+        for sub in subscriptions:
+            print(f"  {sub.subscription_id}: {sub.contract.symbol} ({sub.contract.security_type.value})")
         
+        #get_option_greeks(broker, spy_option_contract)
+
+        get_historical_market_data(broker, spy_option_contract)
+
         try:
-            option_chain = broker.get_option_chain(spy_underlying)
-            print(f"✅ Option chain retrieved:")
-            print(f"  Available expirations: {len(option_chain.expiration_dates)}")
-            print(f"  Available strikes: {len(option_chain.strikes)}")
-            
-            if option_chain.expiration_dates and option_chain.strikes:
-                # Use the first available expiration and strike
-                expiry = option_chain.expiration_dates[0]
-                strike = option_chain.strikes[0]
-                print(f"  Using expiry: {expiry}, strike: {strike}")
-                
-                # Create option contract with valid details
-                option_contract = Contract(
-                    symbol="AAPL",
-                    security_type=SecurityType.OPTION,
-                    exchange="SMART",
-                    currency="USD",
-                    expiry=expiry,
-                    strike=strike,
-                    right=OptionRight.CALL,
-                    multiplier="100"
-                )
-                
-                # Test subscription without tick list
-                print("\n2. Testing option subscription (no tick list)...")
-                try:
-                    sub_id = broker.subscribe_market_data(
-                        contract=option_contract,
-                        callback=options_callback,
-                        market_data_type=MarketDataType.DELAYED
-                    )
-                    print(f"✅ Option subscription successful: {sub_id}")
-                    
-                    # Wait for data
-                    print("Waiting 15 seconds for data...")
-                    time.sleep(15)
-                    
-                    # Cancel subscription
-                    broker.unsubscribe_market_data(sub_id)
-                    print("✅ Subscription cancelled")
-                    
-                except Exception as e:
-                    print(f"❌ Option subscription failed: {e}")
-                
-                # Test with correct tick types for options
-                print("\n3. Testing option subscription with correct tick types...")
-                try:
-                    # Use the correct tick types for options
-                    correct_tick_list = [
-                        "100",  # Option bid price
-                        "101",  # Option ask price
-                        "104",  # Option last price
-                        "105",  # Option last size
-                        "106",  # Option high price
-                        "107",  # Option low price
-                        "108",  # Option volume
-                        "109",  # Option close price
-                        "110",  # Option open price
-                        "21",   # Open interest
-                        "22",   # Historical volatility
-                    ]
-                    
-                    sub_id = broker.subscribe_market_data(
-                        contract=option_contract,
-                        callback=options_callback,
-                        market_data_type=MarketDataType.DELAYED,
-                        generic_tick_list=correct_tick_list
-                    )
-                    print(f"✅ Option subscription with ticks successful: {sub_id}")
-                    
-                    # Wait for data
-                    print("Waiting 15 seconds for data...")
-                    time.sleep(15)
-                    
-                    # Cancel subscription
-                    broker.unsubscribe_market_data(sub_id)
-                    print("✅ Subscription cancelled")
-                    
-                except Exception as e:
-                    print(f"❌ Option subscription with ticks failed: {e}")
-                
-            else:
-                print("❌ No option chain data available")
-                
+            # Wait for data
+            print("Waiting 15 seconds for data...")
+            time.sleep(15)
+            # Cancel subscription
+            broker.unsubscribe_market_data(sub_id)
+            print("✅ Subscription cancelled")
         except Exception as e:
-            print(f"❌ Failed to get option chain: {e}")
-            
-            # Fallback: try with a known liquid option
-            print("\nFallback: Trying with known liquid option...")
-            fallback_contract = Contract(
-                symbol="SPY",
-                security_type=SecurityType.OPTION,
-                exchange="SMART",
-                currency="USD",
-                expiry="20250117",  # January 17, 2025
-                strike=400.0,  # Near current SPY price
-                right=OptionRight.CALL,
-                multiplier="100"
-            )
-            
-            try:
-                sub_id = broker.subscribe_market_data(
-                    contract=fallback_contract,
-                    callback=options_callback,
-                    market_data_type=MarketDataType.DELAYED
-                )
-                print(f"✅ Fallback option subscription successful: {sub_id}")
-                
-                # Wait for data
-                print("Waiting 15 seconds for data...")
-                time.sleep(15)
-                
-                # Cancel subscription
-                broker.unsubscribe_market_data(sub_id)
-                print("✅ Subscription cancelled")
-                
-            except Exception as e:
-                print(f"❌ Fallback option subscription failed: {e}")
-        
-    except Exception as e:
-        print(f"❌ Error: {e}")
+            print(f"❌ Fallback option subscription failed: {e}")
+        except Exception as e:
+            print(f"❌ Error: {e}")
     
     finally:
         # Disconnect

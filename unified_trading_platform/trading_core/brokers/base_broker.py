@@ -91,6 +91,7 @@ class Contract:
     sec_id: Optional[str] = None  # Security ID
     combo_legs: Optional[List[Dict[str, Any]]] = None  # For combo contracts
     combo_legs_descrip: Optional[str] = None  # Description for combo legs
+    conId: int = 0
 
 @dataclass
 class Order:
@@ -276,6 +277,11 @@ class BrokerInterface(ABC):
     @abstractmethod
     def get_market_data_subscriptions(self) -> List[MarketDataSubscription]:
         """Get all active market data subscriptions"""
+        pass
+
+    @abstractmethod
+    def get_contract_details(self, contract: Contract) -> Dict[str, Any]:
+        """Get detailed information about a specific contract"""
         pass
 
     @abstractmethod

@@ -375,6 +375,63 @@ class IBBroker(BrokerInterface):
     def get_market_data_subscriptions(self) -> List[MarketDataSubscription]:
         """Get all active market data subscriptions"""
         return [sub for sub in self.market_data_subscriptions.values() if sub.is_active]
+    
+    def get_contract_details(self, contract: Contract) -> Dict[str, Any]:
+        """
+            Get detailed information about a specific contract using IB's reqContractDetails.
+            
+            Args:
+                contract: The contract to get details for
+                
+            Returns:
+                Dictionary containing contract details with fields like:
+                - symbol: Contract symbol
+                - security_type: Type of security (STK, OPT, FUT, etc.)
+                - exchange: Primary exchange
+                - currency: Currency
+                - description: Full description
+                - min_tick: Minimum price increment
+                - order_types: Supported order types
+                - valid_exchanges: List of valid exchanges
+                - and more...
+                
+            Raises:
+                Exception: If not connected or error fetching details
+        """
+        if not self.is_connected:
+            raise Exception("Not connected to broker")
+            
+        req_id = len(self.client.pending_contract_details) + 5000
+        response_received = threading.Event()
+        self.client.pending_contract_details[req_id] = {
+            'event': response_received,
+            'details': None,
+            'error': None
+        }
+        
+        try:
+            ib_contract = self._create_ib_contract(contract)
+            self.client.reqContractDetails(req_id, ib_contract)
+            
+            # Wait for response with timeout (10 seconds)
+            if not response_received.wait(timeout=10):
+                raise TimeoutError("Timed out waiting for contract details")
+                
+            # Get the result
+            if req_id in self.client.pending_contract_details:
+                result = self.client.pending_contract_details[req_id]
+                if result['error']:
+                    raise Exception(f"Error getting contract details: {result['error']}")
+                if not result['details']:
+                    raise Exception("No contract details found")
+                return result['details']
+                
+            raise Exception("Failed to get contract details")
+            
+        except Exception as e:
+            if req_id in self.client.pending_contract_details:
+                del self.client.pending_contract_details[req_id]
+            raise Exception(f"Error in get_contract_details: {str(e)}")
 
     def get_option_chain(self, underlying_contract: Contract, 
                         expiration_dates: Optional[List[str]] = None,
@@ -384,37 +441,47 @@ class IBBroker(BrokerInterface):
             raise Exception("Not connected to broker")
             
         # Create cache key
-        cache_key = f"{underlying_contract.symbol}_{underlying_contract.exchange}"
+        #cache_key = f"{underlying_contract.symbol}_{underlying_contract.exchange}"
         
         # Check cache first
-        if cache_key in self.option_chains:
-            cached_chain = self.option_chains[cache_key]
-            if (datetime.now() - cached_chain.last_updated).seconds < 300:  # 5 minute cache
-                return cached_chain
-        
+        #if cache_key in self.option_chains:
+        #    cached_chain = self.option_chains[cache_key]
+        #    if (datetime.now() - cached_chain.last_updated).seconds < 300:  # 5 minute cache
+        #        return cached_chain
+
+        #self.option_chains[cache_key] = None
+
         # Request option chain from IB
         req_id = len(self.option_chains) + 3000
-        ib_contract = self._create_ib_contract(underlying_contract)
         
         try:
+            response_received = threading.Event()
+            self.client.pending_option_chains[req_id] = {
+                'event': response_received,
+                'underlying_contract': underlying_contract,
+                'result': None
+            }
+            print("underlying conId = ", underlying_contract.conId if hasattr(underlying_contract, 'conId') else 0)
             # Request option chain
-            self.client.reqSecDefOptParams(req_id, underlying_contract.symbol, "", underlying_contract.security_type.value, underlying_contract.conId if hasattr(underlying_contract, 'conId') else 0)
+            self.client.reqSecDefOptParams(req_id, underlying_contract.symbol, underlying_contract.exchange, underlying_contract.security_type.value, underlying_contract.conId if hasattr(underlying_contract, 'conId') else 0)
+
             # Wait for response till timeout
-            
-            option_chain = OptionChain(
-                underlying_symbol=underlying_contract.symbol,
-                underlying_contract=underlying_contract,
-                expiration_dates=expiration_dates or [],
-                strikes=strikes or [],
-                options=[]
-            )
-            
-            self.option_chains[cache_key] = option_chain
-            return option_chain
-            
+            if not response_received.wait(timeout=20):
+                del self.client.pending_option_chains[req_id]
+                raise TimeoutError("Timeout waiting for option chain")
+
+            if req_id in self.client.pending_option_chains and self.client.pending_option_chains[req_id].get('result'):
+                print("received option chain results")
+                option_chain = self.client.pending_option_chains[req_id].get('result')
+                #self.option_chains[cache_key] = option_chain
+                del self.client.pending_option_chains[req_id]
+                return option_chain
         except Exception as e:
             print(f"Error getting option chain: {e}")
+            if req_id in self.client.pending_option_chains:
+                del self.client.pending_option_chains[req_id]
             raise e
+        return None
 
     def get_greeks(self, option_contract: Contract) -> Greeks:
         """Get options Greeks for a specific option contract"""
@@ -457,6 +524,8 @@ class IBClient(EWrapper, EClient):
     def __init__(self, broker):
         EClient.__init__(self, self)
         self.broker = broker
+        self.pending_option_chains = {}
+        self.pending_contract_details = {}
 
     def nextValidId(self, orderId: OrderId):
         """Receive next valid order ID"""
@@ -674,19 +743,11 @@ class IBClient(EWrapper, EClient):
                                           tradingClass: str, multiplier: str, expirations: set, 
                                           strikes: set):
         """Receive option chain data"""
-        if reqId in self.broker.requestid_cachekey:
-            option_cache = self.broker.requestid_cachekey[reqId]
+        if reqId in self.pending_option_chains:
+            underlying_contract = self.pending_option_chains[reqId]['underlying_contract']
             # Convert to our OptionChain format
             expiration_dates = list(expirations)
             strike_prices = list(strikes)
-
-            # Create underlying contract
-            underlying_contract = Contract(
-                symbol=self.broker.option_chains[option_cache].underlying_contract.symbol,  # Will be filled by the calling method
-                security_type=self.broker.option_chains[option_cache].underlying_contract.security_type,
-                exchange=exchange,
-                currency=self.broker.option_chains[option_cache].underlying_contract.currency  # Default currency
-            )
             
             option_chain = OptionChain(
                 underlying_symbol=underlying_contract.symbol, 
@@ -695,16 +756,70 @@ class IBClient(EWrapper, EClient):
                 strikes=strike_prices,
                 options=[]  # Individual option contracts would be created separately
             )
-            
-            # Store in cache
-            cache_key = f"chain_{reqId}"
-            self.broker.option_chains[cache_key] = option_chain
+            self.pending_option_chains[reqId]['result'] = option_chain
 
-    def securityDefinitionOptionalParameterEnd(self, reqId: int):
+    def securityDefinitionOptionParameterEnd(self, reqId: int):
         """Option chain data complete"""
-        pass
+        if reqId in self.pending_option_chains:
+            self.pending_option_chains[reqId]['event'].set()
+
+    def contractDetails(self, reqId: int, contractDetails):
+
+        """Handle contract details response"""
+        if reqId in self.pending_contract_details:
+            try:
+                details = {
+                    'symbol': contractDetails.contract.symbol,
+                    'security_type': contractDetails.contract.secType,
+                    'exchange': contractDetails.contract.exchange,
+                    'currency': contractDetails.contract.currency,
+                    'description': getattr(contractDetails, 'longName', ''),
+                    'min_tick': getattr(contractDetails, 'minTick', None),
+                    'order_types': getattr(contractDetails, 'orderTypes', ''),
+                    'valid_exchanges': getattr(contractDetails, 'validExchanges', ''),
+                    'price_magnifier': getattr(contractDetails, 'priceMagnifier', 1),
+                    'under_conid': getattr(contractDetails, 'underConId', None),
+                    'long_name': getattr(contractDetails, 'longName', ''),
+                    'contract_month': getattr(contractDetails, 'contractMonth', ''),
+                    'industry': getattr(contractDetails, 'industry', ''),
+                    'category': getattr(contractDetails, 'category', ''),
+                    'subcategory': getattr(contractDetails, 'subcategory', ''),
+                    'time_zone_id': getattr(contractDetails, 'timeZoneId', ''),
+                    'trading_hours': getattr(contractDetails, 'tradingHours', ''),
+                    'liquid_hours': getattr(contractDetails, 'liquidHours', ''),
+                    'ev_rule': getattr(contractDetails, 'evRule', ''),
+                    'ev_multiplier': getattr(contractDetails, 'evMultiplier', None),
+                    'md_size_multiplier': getattr(contractDetails, 'mdSizeMultiplier', 1),
+                    'agg_group': getattr(contractDetails, 'aggGroup', None),
+                    'market_rule_ids': getattr(contractDetails, 'marketRuleIds', ''),
+                    'last_trade_date': getattr(contractDetails.contract, 'lastTradeDateOrContractMonth', ''),
+                    'sector': getattr(contractDetails, 'sector', ''),
+                    'sector_group': getattr(contractDetails, 'sectorGroup', ''),
+                    'strike': getattr(contractDetails.contract, 'strike', None),
+                    'right': getattr(contractDetails.contract, 'right', ''),
+                    'multiplier': getattr(contractDetails.contract, 'multiplier', ''),
+                    'primary_exchange': getattr(contractDetails.contract, 'primaryExchange', ''),
+                    'contract_details': contractDetails  # Raw contract details object
+                }
+                self.pending_contract_details[reqId]['details'] = details
+                self.pending_contract_details[reqId]['event'].set()
+            except Exception as e:
+                self.pending_contract_details[reqId]['error'] = str(e)
+                self.pending_contract_details[reqId]['event'].set()
+
+    def contractDetailsEnd(self, reqId: int):
+        """Called when all contract details have been received"""
+        if reqId in self.pending_contract_details:
+            self.pending_contract_details[reqId]['event'].set()
 
     def error(self, reqId: int, errorCode: int, errorString: str, advancedOrderRejectJson: str = ""):
+        """Handle errors for contract details requests"""
+        if reqId in self.pending_contract_details:
+            self.pending_contract_details[reqId]['error'] = f"{errorCode}: {errorString}"
+            self.pending_contract_details[reqId]['event'].set()
+        else:
+            # Call parent error handler for other errors
+            super().error(reqId, errorCode, errorString)
         """Handle errors with enhanced market data error tracking"""
         if errorCode not in [2104, 2106, 2158]:  # Ignore harmless messages
             print(f"IB Error {errorCode}: {errorString}")

@@ -44,8 +44,7 @@ def main():
             exchange="SMART",
             currency="USD",
             expiry="20250117",  # January 17, 2025
-            str
-            ike=150.0,
+            strike=150.0,
             right=OptionRight.CALL,
             multiplier="100"
         )
@@ -79,6 +78,7 @@ def main():
                 contract=option_contract,
                 callback=simple_callback,
                 market_data_type=MarketDataType.DELAYED,
+
                 generic_tick_list=["100", "101", "104"]  # Just basic prices
             )
             print(f"✅ Option subscription successful (basic ticks): {sub_id_2}")
