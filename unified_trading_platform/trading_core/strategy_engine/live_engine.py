@@ -105,6 +105,29 @@ class UnifiedStrategyEngine:
         """Check if we have any open positions"""
         return any(leg.entry_ts is not None for leg in self.live_legs)
     
+    def generate_signal_for_leg(self, leg: LiveLeg):
+        # Create order signal
+        contract = Contract(
+            symbol=f"{leg.spec.option_type}{leg.strike}",
+            security_type="OPT",
+            exchange="NSE",  # fixme: fix this
+            currency="INR",  # fixme: fix this
+            expiry=leg.expiry_date.strftime("%Y%m%d"),
+            strike=leg.strike,
+            right=leg.spec.option_type,
+            multiplier=str(self.config.lot_size)
+        )
+        
+        action = OrderAction.BUY if leg.spec.position.lower().startswith("buy") else OrderAction.SELL
+        
+        signal = OrderSignal(
+            action=action,
+            contract=contract,
+            quantity=leg.qty,
+            leg_id=leg.leg_id
+        )
+        return signal
+
     def _check_entry_conditions(self, tick_data: TickData, underlying_price: float, 
                                option_chain: Optional[pd.DataFrame]) -> List[OrderSignal]:
         """Check if entry conditions are met"""
@@ -130,34 +153,35 @@ class UnifiedStrategyEngine:
                 
             leg.strike = strike
             
-            # Create order signal
-            contract = Contract(
-                symbol=f"{leg.spec.option_type}{strike}",
-                security_type="OPT",
-                exchange="NSE",
-                currency="INR",
-                expiry=leg.expiry_date.strftime("%Y%m%d"),
-                strike=strike,
-                right=leg.spec.option_type,
-                multiplier=str(self.config.lot_size)
-            )
+            signals.append(self.generate_signal_for_leg(leg))
+            # # Create order signal
+            # contract = Contract(
+            #     symbol=f"{leg.spec.option_type}{strike}",
+            #     security_type="OPT",
+            #     exchange="NSE",  # fixme: fix this
+            #     currency="INR",  # fixme: fix this
+            #     expiry=leg.expiry_date.strftime("%Y%m%d"),
+            #     strike=strike,
+            #     right=leg.spec.option_type,
+            #     multiplier=str(self.config.lot_size)
+            # )
             
-            action = OrderAction.BUY if leg.spec.position.lower().startswith("buy") else OrderAction.SELL
+            # action = OrderAction.BUY if leg.spec.position.lower().startswith("buy") else OrderAction.SELL
             
-            signal = OrderSignal(
-                action=action,
-                contract=contract,
-                quantity=leg.qty,
-                leg_id=leg.leg_id
-            )
+            # signal = OrderSignal(
+            #     action=action,
+            #     contract=contract,
+            #     quantity=leg.qty,
+            #     leg_id=leg.leg_id
+            # )
             
-            signals.append(signal)
+            # signals.append(signal)
             
-            # Mark as entered
-            leg.entry_ts = tick_data.timestamp
-            leg.entry_px = tick_data.last or tick_data.bid or tick_data.ask
-            leg.entry_S = underlying_price
-            leg.best_fav_px = leg.entry_px
+            # # Mark as entered
+            # leg.entry_ts = tick_data.timestamp
+            # leg.entry_px = tick_data.last or tick_data.bid or tick_data.ask
+            # leg.entry_S = underlying_price
+            # leg.best_fav_px = leg.entry_px
         
         return signals
     
@@ -203,30 +227,8 @@ class UnifiedStrategyEngine:
                 exit_reason = "TRAIL"
                 leg.hit_trail = True
             
-            if should_exit:
-                # Create exit signal
-                contract = Contract(
-                    symbol=f"{leg.spec.option_type}{leg.strike}",
-                    security_type="OPT",
-                    exchange="NSE",
-                    currency="INR",
-                    expiry=leg.expiry_date.strftime("%Y%m%d"),
-                    strike=leg.strike,
-                    right=leg.spec.option_type,
-                    multiplier=str(self.config.lot_size)
-                )
-                
-                # Reverse the action for exit
-                action = OrderAction.SELL if leg.spec.position.lower().startswith("buy") else OrderAction.BUY
-                
-                signal = OrderSignal(
-                    action=action,
-                    contract=contract,
-                    quantity=leg.qty,
-                    leg_id=leg.leg_id
-                )
-                
-                signals.append(signal)
+            if should_exit:                
+                signals.append(self.generate_signal_for_leg(leg))
                 
                 # Mark as exited
                 leg.exit_ts = tick_data.timestamp
@@ -236,7 +238,6 @@ class UnifiedStrategyEngine:
                 # Check for re-entries
                 if exit_reason in ("SL", "TARGET"):
                     self._spawn_or_queue_reentry(tick_data.timestamp, leg, exit_reason)
-        
         return signals
     
     def _check_reentry_conditions(self, tick_data: TickData, underlying_price: float,
@@ -269,32 +270,10 @@ class UnifiedStrategyEngine:
                         new_leg.entry_S = underlying_price
                         new_leg.best_fav_px = new_leg.entry_px
                         new_leg.parent_leg_id = pen.parent_leg_id
+                        new_leg.strike = strike
                         
                         self.live_legs.append(new_leg)
-                        
-                        # Create order signal
-                        contract = Contract(
-                            symbol=f"{pen.spec.option_type}{strike}",
-                            security_type="OPT",
-                            exchange="NSE",
-                            currency="INR",
-                            expiry=exp_date.strftime("%Y%m%d"),
-                            strike=strike,
-                            right=pen.spec.option_type,
-                            multiplier=str(self.config.lot_size)
-                        )
-                        
-                        action = OrderAction.BUY if pen.spec.position.lower().startswith("buy") else OrderAction.SELL
-                        
-                        signal = OrderSignal(
-                            action=action,
-                            contract=contract,
-                            quantity=new_leg.qty,
-                            leg_id=new_leg.leg_id,
-                            parent_leg_id=pen.parent_leg_id
-                        )
-                        
-                        signals.append(signal)
+                        signals.append(signals.append(self.generate_signal_for_leg(new_leg)))
             
             elif mode.startswith("RE_COST"):
                 # Cost-based re-entry
@@ -311,13 +290,8 @@ class UnifiedStrategyEngine:
                         if ok:
                             # Create new leg and signal (similar to RE_ASAP)
                             # ... (implementation similar to above)
-                            pass
-                        else:
-                            new_pending.append(pen)
-                    else:
-                        new_pending.append(pen)
-                else:
-                    new_pending.append(pen)
+                            continue
+                new_pending.append(pen)
             
             elif mode.startswith("RE_MOMENTUM"):
                 # Momentum-based re-entry
@@ -339,18 +313,7 @@ class UnifiedStrategyEngine:
                                 if current_price >= (pen.watch_price + pts):
                                     # Create new leg and signal
                                     # ... (implementation similar to above)
-                                    pass
-                                else:
-                                    new_pending.append(pen)
-                            else:
-                                new_pending.append(pen)
-                        else:
-                            new_pending.append(pen)
-                    else:
-                        new_pending.append(pen)
-                else:
-                    new_pending.append(pen)
-            else:
+                                    continue
                 new_pending.append(pen)
         
         self.pending_reentries = new_pending

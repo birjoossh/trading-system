@@ -58,7 +58,7 @@ def get_option_chain(broker, contract):
         print(f"Error getting contract details: {e}")
 
 def list_active_subscriptions(broker):
-    # Example 5: List active subscriptions
+    # List active subscriptions
     print("Active market data subscriptions:")
     subscriptions = broker.get_market_data_subscriptions()
     return subscriptions

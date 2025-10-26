@@ -50,6 +50,5 @@ except ImportError:
 try:
     from .paper_broker import PaperBroker
     BrokerFactory.register_broker('paper', PaperBroker)
-    BrokerFactory.register_broker('sim', PaperBroker)
 except ImportError:
     print("Paper broker not available")

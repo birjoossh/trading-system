@@ -195,7 +195,8 @@ class IBBroker(BrokerInterface):
         self.historical_data[req_id] = []
 
         ib_contract = self._create_ib_contract(contract)
-        
+
+
         try:
             # Request historical data
             self.client.reqHistoricalData(

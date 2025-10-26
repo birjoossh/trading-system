@@ -6,30 +6,41 @@ from typing import Dict, List
 from dataclasses import dataclass
 import numpy as np, pandas as pd
 
-from config import StrategyConfig, LegSpec, StrikeCriteria, RiskConfig, RiskRule, TrailRule, ReEntryRule
-from utils import parse_time, ensure_dir, nearest_ts
-# from .adapters.jio import JioH5Adapter
+from config import (
+    StrategyConfig,
+    LegSpec,
+    StrikeCriteria,
+    RiskConfig,
+    RiskRule,
+    TrailRule,
+    ReEntryRule,
+)
 from strikes import select_strike
-from reporting import flush_results
+
 
 def weekly_expiry_for(date: dt.date) -> dt.date:
-    switch = dt.date(2025,9,1); wd = 1 if date >= switch else 3  # Tue else Thu
+    switch = dt.date(2025, 9, 1)
+    wd = 1 if date >= switch else 3  # Tue else Thu
     d = date
-    while d.weekday() != wd: d += dt.timedelta(days=1)
+    while d.weekday() != wd:
+        d += dt.timedelta(days=1)
     return d
 
+
 def monthly_expiry_for(date: dt.date) -> dt.date:
-    switch = dt.date(2025,9,1); wd = 1 if date >= switch else 3
-    y,m = date.year, date.month
-    nxt = dt.date(y+1,1,1) if m==12 else dt.date(y,m+1,1)
+    switch = dt.date(2025, 9, 1)
+    wd = 1 if date >= switch else 3
+    y, m = date.year, date.month
+    nxt = dt.date(y + 1, 1, 1) if m == 12 else dt.date(y, m + 1, 1)
     d = nxt - dt.timedelta(days=1)
-    while d.weekday() != wd: d -= dt.timedelta(days=1)
+    while d.weekday() != wd:
+        d -= dt.timedelta(days=1)
     return d
 
 
 def next_weekly_expiry_for(date: dt.date) -> dt.date:
     this = weekly_expiry_for(date)
-    nxt  = weekly_expiry_for(this + dt.timedelta(days=1))
+    nxt = weekly_expiry_for(this + dt.timedelta(days=1))
     return nxt
 
 
@@ -51,13 +62,18 @@ def resolve_expiry_keyword(date: dt.date, keyword: str) -> dt.date:
         return next_monthly_expiry_for(date)
     return weekly_expiry_for(date)
 
+
 # ---------------- Re-entry helpers ----------------
 REENTRY_MODES = {
-    "RE_ASAP", "RE_ASAP_REV",
-    "RE_COST", "RE_COST_REV",
-    "RE_MOMENTUM", "RE_MOMENTUM_REV",
+    "RE_ASAP",
+    "RE_ASAP_REV",
+    "RE_COST",
+    "RE_COST_REV",
+    "RE_MOMENTUM",
+    "RE_MOMENTUM_REV",
     "LAZY_LEG",
 }
+
 
 def _reverse_position(pos: str) -> str:
     return "Buy" if str(pos).lower().startswith("sell") else "Sell"
@@ -66,34 +82,38 @@ def _reverse_position(pos: str) -> str:
 @dataclass
 class PendingReEntry:
     parent_leg_id: int
-    trigger: str                  # "SL" or "TARGET"
+    trigger: str  # "SL" or "TARGET"
     mode: str
     created_ts: pd.Timestamp
     spec: LegSpec
-    watch_strike: float | None = None   # for RE_COST
-    watch_price: float | None = None    # for RE_COST / RE_MOMENTUM
+    watch_strike: float | None = None  # for RE_COST
+    watch_price: float | None = None  # for RE_COST / RE_MOMENTUM
+
 
 # ---- coercion helpers (accept dicts or dataclasses) ----
+
 
 def _risk_from_any(obj):
     if isinstance(obj, RiskConfig):
         return obj
     if isinstance(obj, dict):
-        t = obj.get('target', {})
-        s = obj.get('sl', {})
-        tr = obj.get('trail', {})
-        def rr(d, default_basis='premium_pct'):
+        t = obj.get("target", {})
+        s = obj.get("sl", {})
+        tr = obj.get("trail", {})
+
+        def rr(d, default_basis="premium_pct"):
             if not isinstance(d, dict):
                 return RiskRule(enabled=False, basis=default_basis, value=0.0)
             return RiskRule(
-                enabled=bool(d.get('enabled', True)),
-                basis=str(d.get('basis', default_basis)),
-                value=float(d.get('value', 0.0))
+                enabled=bool(d.get("enabled", True)),
+                basis=str(d.get("basis", default_basis)),
+                value=float(d.get("value", 0.0)),
             )
+
         trail = TrailRule(
-            enabled=bool(tr.get('enabled', False)),
-            basis=str(tr.get('basis', 'points')),
-            value=float(tr.get('value', 0.0))
+            enabled=bool(tr.get("enabled", False)),
+            basis=str(tr.get("basis", "points")),
+            value=float(tr.get("value", 0.0)),
         )
         return RiskConfig(target=rr(t), sl=rr(s), trail=trail)
     # default empty (all disabled)
@@ -105,30 +125,43 @@ def _reentry_from_any(obj):
         return obj
     if isinstance(obj, dict):
         return ReEntryRule(
-            enabled=bool(obj.get('enabled', False)),
-            mode=str(obj.get('mode', 'RE_ASAP')).upper(),
-            max_count=int(obj.get('max_count', 0)),
-            lazy_leg=obj.get('lazy_leg')
+            enabled=bool(obj.get("enabled", False)),
+            mode=str(obj.get("mode", "RE_ASAP")).upper(),
+            max_count=int(obj.get("max_count", 0)),
+            lazy_leg=obj.get("lazy_leg"),
         )
     return ReEntryRule()
 
+
 class LiveLeg:
-    def __init__(self, leg_id:int, spec:LegSpec, strike:float, qty:int):
-        self.leg_id=leg_id; self.spec=spec; self.strike=strike; self.qty=qty
-        self.entry_ts=self.exit_ts=None; self.entry_px=self.exit_px=None
-        self.entry_S=None; self.best_fav_px=None
-        self.pnl=0.0; self.hit_sl=False; self.hit_target=False; self.hit_trail=False; self.exit_reason=None
-        self.reentry_id=0; self.expiry_date=None
+    def __init__(self, leg_id: int, spec: LegSpec, strike: float, qty: int):
+        self.leg_id = leg_id
+        self.spec = spec
+        self.strike = strike
+        self.qty = qty
+        self.entry_ts = self.exit_ts = None
+        self.entry_px = self.exit_px = None
+        self.entry_S = None
+        self.best_fav_px = None
+        self.pnl = 0.0
+        self.hit_sl = False
+        self.hit_target = False
+        self.hit_trail = False
+        self.exit_reason = None
+        self.reentry_id = 0
+        self.expiry_date = None
         # re-entry counters
-        self.re_sl_count=0
-        self.re_tgt_count=0
+        self.re_sl_count = 0
+        self.re_tgt_count = 0
 
 
 def _is_short(position: str) -> bool:
     return str(position).lower().startswith("sell")
 
 
-def _hit_target(rule, position: str, entry_px: float, entry_S: float, ltp: float, S: float) -> bool:
+def _hit_target(
+    rule, position: str, entry_px: float, entry_S: float, ltp: float, S: float
+) -> bool:
     if not rule or not getattr(rule, "enabled", False):
         return False
     b = str(getattr(rule, "basis", "premium_pct")).lower()
@@ -139,19 +172,21 @@ def _hit_target(rule, position: str, entry_px: float, entry_S: float, ltp: float
         return move >= v
     if b == "premium_pct":
         ref = entry_px if entry_px else 1.0
-        ret = ((entry_px - ltp)/ref) if short else ((ltp - entry_px)/ref)
-        return ret >= v/100.0
+        ret = ((entry_px - ltp) / ref) if short else ((ltp - entry_px) / ref)
+        return ret >= v / 100.0
     if b == "underlying_pts":
         move_up = S - entry_S
         return (move_up <= -v) if short else (move_up >= v)
     if b == "underlying_pct":
         refS = entry_S if entry_S else 1.0
-        ret_up = (S - entry_S)/refS
-        return (ret_up <= -v/100.0) if short else (ret_up >= v/100.0)
+        ret_up = (S - entry_S) / refS
+        return (ret_up <= -v / 100.0) if short else (ret_up >= v / 100.0)
     return False
 
 
-def _hit_stop(rule, position: str, entry_px: float, entry_S: float, ltp: float, S: float) -> bool:
+def _hit_stop(
+    rule, position: str, entry_px: float, entry_S: float, ltp: float, S: float
+) -> bool:
     if not rule or not getattr(rule, "enabled", False):
         return False
     b = str(getattr(rule, "basis", "premium_pct")).lower()
@@ -162,15 +197,15 @@ def _hit_stop(rule, position: str, entry_px: float, entry_S: float, ltp: float, 
         return loss >= v
     if b == "premium_pct":
         ref = entry_px if entry_px else 1.0
-        loss = ((ltp - entry_px)/ref) if short else ((entry_px - ltp)/ref)
-        return loss >= v/100.0
+        loss = ((ltp - entry_px) / ref) if short else ((entry_px - ltp) / ref)
+        return loss >= v / 100.0
     if b == "underlying_pts":
         move_up = S - entry_S
         return (move_up >= v) if short else (move_up <= -v)
     if b == "underlying_pct":
         refS = entry_S if entry_S else 1.0
-        ret_up = (S - entry_S)/refS
-        return (ret_up >= v/100.0) if short else (ret_up <= -v/100.0)
+        ret_up = (S - entry_S) / refS
+        return (ret_up >= v / 100.0) if short else (ret_up <= -v / 100.0)
     return False
 
 
@@ -186,9 +221,14 @@ def _trail_stop(trail_rule, position: str, best_fav_px: float, ltp: float) -> bo
         stop = (best_fav_px + val) if short else (best_fav_px - val)
         return ltp >= stop if short else ltp <= stop
     if basis == "percent":
-        stop = (best_fav_px * (1 + val/100.0)) if short else (best_fav_px * (1 - val/100.0))
+        stop = (
+            (best_fav_px * (1 + val / 100.0))
+            if short
+            else (best_fav_px * (1 - val / 100.0))
+        )
         return ltp >= stop if short else ltp <= stop
     return False
+
 
 # class Backtester:
 #     def __init__(self, cfg: StrategyConfig, out_csv: Path):

@@ -10,7 +10,7 @@ def live_trading_example():
     
     # Create strategy manager for live trading
     manager = StrategyManager(
-        venue="paper",  # Use paper trading broker
+        venue="ib",  # Use paper trading broker
         strategy_name="atm_short_straddle_1100_1515"
     )
     
@@ -27,20 +27,20 @@ def live_trading_example():
             return
         
         # Start live trading
-        print("Starting live trading...")
-        if manager.start():
-            print("✓ Live trading started")
+        # print("Starting live trading...")
+        # if manager.start():
+        #     print("✓ Live trading started")
             
-            # Let it run for a while (in real usage, this would be until exit_time)
-            import time
-            time.sleep(10)  # Run for 10 seconds as example
+        #     # Let it run for a while (in real usage, this would be until exit_time)
+        #     import time
+        #     time.sleep(10)  # Run for 10 seconds as example
             
-            # Stop trading
-            print("Stopping trading...")
-            manager.stop()
-            print("✓ Trading stopped")
-        else:
-            print("✗ Failed to start live trading")
+        #     # Stop trading
+        #     print("Stopping trading...")
+        #     manager.stop()
+        #     print("✓ Trading stopped")
+        # else:
+        #     print("✗ Failed to start live trading")
     
     except Exception as e:
         print(f"Error in live trading: {e}")
@@ -71,15 +71,15 @@ def backtesting_example():
             return
         
         # Start backtesting
-        print("Starting backtesting...")
-        if manager.start():
-            print("✓ Backtesting completed")
+        # print("Starting backtesting...")
+        # if manager.start():
+        #     print("✓ Backtesting completed")
             
-            # Get portfolio summary
-            portfolio_summary = manager.get_portfolio_summary()
-            print(f"Portfolio Summary: {portfolio_summary}")
-        else:
-            print("✗ Failed to start backtesting")
+        #     # Get portfolio summary
+        #     portfolio_summary = manager.get_portfolio_summary()
+        #     print(f"Portfolio Summary: {portfolio_summary}")
+        # else:
+        #     print("✗ Failed to start backtesting")
     
     except Exception as e:
         print(f"Error in backtesting: {e}")
@@ -109,8 +109,8 @@ if __name__ == "__main__":
     
     # Run examples
     live_trading_example()
-    backtesting_example()
-    check_strategy_status()
+    # backtesting_example()
+    # check_strategy_status()
     
     print("\n" + "=" * 50)
     print("Examples completed!")
