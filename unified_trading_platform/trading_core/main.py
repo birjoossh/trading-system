@@ -93,6 +93,9 @@ class TradingSystem:
         return self.data_manager.subscribe_real_time_data(
             contract, callback, broker_name
         )
+    
+    def get_option_chain(self, broker_name: str, contract: Contract):
+        return self.data_manager.get_option_chain(broker_name, contract)
 
     def submit_market_order(self, symbol: str, exchange: str, action: str,
                           quantity: int, broker_name: str,

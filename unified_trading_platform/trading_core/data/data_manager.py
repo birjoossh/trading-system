@@ -91,6 +91,11 @@ class DataManager:
 
         return df
 
+    def get_option_chain(self, broker_name: Optional[str] = None, contract: Contract = None) -> pd.DataFrame:
+        broker = self._get_broker(broker_name)
+        option_chain = broker.get_option_chain(contract)
+        return option_chain
+
     def _cache_bars(self, df: pd.DataFrame):
         with sqlite3.connect(self.db_path) as conn:
             df.to_sql('historical_bars', conn, if_exists='append', index=True, index_label="timestamp")
