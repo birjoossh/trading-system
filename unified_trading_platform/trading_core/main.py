@@ -7,10 +7,10 @@ from typing import Dict, List, Optional, Callable
 from datetime import datetime
 import pandas as pd
 
-from trading_core.brokers.broker_factory import BrokerFactory
-from trading_core.brokers.base_broker import Contract, Order, OrderType, OrderAction
-from trading_core.data.data_manager import DataManager
-from trading_core.orders.order_manager import OrderManager
+from unified_trading_platform.trading_core.brokers.broker_factory import BrokerFactory
+from unified_trading_platform.trading_core.brokers.base_broker import Contract, Order, OrderType, OrderAction, SecurityType
+from unified_trading_platform.trading_core.data.data_manager import DataManager
+from unified_trading_platform.trading_core.orders.order_manager import OrderManager
 
 class TradingSystem:
     """Main trading system class"""
@@ -26,22 +26,34 @@ class TradingSystem:
     def add_broker(self, name: str, broker_type: str, **config) -> bool:
         """Add a broker to the system"""
         try:
-            print("above broker...")
-            broker = BrokerFactory.create_broker(broker_type, **config)
-            print("here at main ...")
-            if broker.connect(**config):
+            print(f"Creating broker of type: {broker_type}")
+            # Create broker instance with required parameters
+            if broker_type.lower() == 'interactive_brokers':
+                host = config.get('host', '127.0.0.1')
+                port = config.get('port', 7497)  # Default paper trading port
+                client_id = config.get('client_id', 1)
+                print(f"Connecting to IB with host={host}, port={port}, client_id={client_id}")
+                broker = BrokerFactory.create_broker(broker_type, host=host, port=port, client_id=client_id)
+            else:
+                broker = BrokerFactory.create_broker(broker_type, **config)
+            
+            # Connect the broker
+            print(f"Connecting to {broker_type}...")
+            if broker.connect():
                 self.brokers[name] = broker
-                print("adding broker...")
+                print("Broker connected, initializing data and order management...")
                 self.data_manager.add_broker(name, broker)
                 self.order_manager.add_broker(name, broker)
-                print(f"Broker '{name}' ({broker_type}) added successfully")
+                print(f"Broker '{name}' ({broker_type}) added and initialized successfully")
                 return True
             else:
                 print(f"Failed to connect to broker '{name}'")
                 return False
 
         except Exception as e:
-            print(f"Error adding broker '{name}': {e}")
+            print(f"Error adding broker '{name}': {str(e)}")
+            import traceback
+            traceback.print_exc()
             return False
 
     def remove_broker(self, name: str):
@@ -68,7 +80,7 @@ class TradingSystem:
         )
 
     def subscribe_market_data(self, symbol: str, exchange: str,
-                            callback: Callable, security_type: str = "STK",
+                            callback: Callable, security_type: SecurityType = SecurityType.STOCK,
                             currency: str = "USD", broker_name: Optional[str] = None) -> bool:
         """Subscribe to real-time market data"""
         contract = Contract(

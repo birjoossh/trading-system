@@ -9,9 +9,8 @@ import time
 from datetime import datetime, date, time as dt_time
 from typing import Optional, Dict, List, Any
 import pandas as pd
-import json
-import uuid
 
+from unified_trading_platform.trading_core.config.config import Config
 from ..brokers.broker_factory import BrokerFactory
 from ..brokers.base_broker import (
     BrokerInterface,
@@ -20,6 +19,7 @@ from ..brokers.base_broker import (
     OrderAction,
     OrderType,
     TickData,
+    SecurityType
 )
 from ..orders.order_manager import OrderManager, ManagedOrder
 from ..data.data_manager import DataManager
@@ -32,7 +32,8 @@ from ...database.db_utils import (
     save_portfolio_snapshot,
     save_pnl_snapshot,
 )
-
+from unified_trading_platform.trading_core.main import TradingSystem
+from unified_trading_platform.trading_core.config.config import Config
 
 class StrategyManager:
     """Main orchestrator for strategy execution"""
@@ -51,10 +52,11 @@ class StrategyManager:
         self.end_date = end_date
         self.db_path = db_path
 
+        self.config = Config()
+
         # Core components
+        self.trading_system = TradingSystem()
         self.broker: Optional[BrokerInterface] = None
-        self.order_manager: Optional[OrderManager] = None
-        self.data_manager: Optional[DataManager] = None
         self.strategy_engine: Optional[UnifiedStrategyEngine] = None
         self.strategy_config: Optional[StrategyConfig] = None
 
@@ -66,6 +68,9 @@ class StrategyManager:
         self.order_queue = queue.Queue()  # For pending orders
         self.current_portfolio: Dict = {}
         self.initial_portfolio: Dict = {}
+        
+        # Initialize config
+        self.config = Config()
 
         # Threading
         self._stop_event = threading.Event()
@@ -74,8 +79,21 @@ class StrategyManager:
         # Initialize database tables
         init_strategy_tables(db_path)
 
+    def on_order_filled(self, order):
+        """Callback for when an order is filled"""
+        print(f"ORDER FILLED: {order.contract.symbol} - {order.filled_quantity} shares")
+
+    def on_trade_executed(self, trade):
+        """Callback for trade execution"""
+        print(f"TRADE EXECUTED: {trade.contract.symbol} - {trade.quantity} @ ${trade.price}")
+
+    def on_market_data(self, tick_data):
+        """Callback for market data updates"""
+        print(f"Market Data: {tick_data.symbol} - Bid: {tick_data.bid}, Ask: {tick_data.ask}, Last: {tick_data.last}")
+
     def initialize(self) -> bool:
         """Initialize the strategy manager"""
+        print("DEBUG: Starting initialization of StrategyManager")
         try:
             # Load strategy configuration
             self.strategy_config = load_strategy_config(self.strategy_name)
@@ -90,38 +108,31 @@ class StrategyManager:
                 initial_portfolio={},  # Will be updated after getting broker positions
                 exit_time=self.strategy_config.exit_time,
             )
+            exch_config = self.config.get_broker_config(self.venue)
+            print(f"DEBUG: Broker config: {exch_config}")
 
-            # Get broker instance
-            self.broker = BrokerFactory.create_broker(self.venue)
-            if not self.broker.connect():
-                raise RuntimeError(f"Failed to connect to broker: {self.venue}")
-
-            # Initialize order manager
-            self.order_manager = OrderManager(f"{self.db_path}_orders")
-            self.order_manager.add_broker(self.venue, self.broker)
-
-            # Register order callbacks
-            self.order_manager.register_callback("order_filled", self._on_order_filled)
-            self.order_manager.register_callback(
-                "order_rejected", self._on_order_rejected
+            self.trading_system.add_broker(
+                name=self.venue,
+                broker_type=exch_config.get("broker_type", self.venue),
+                host=exch_config.get("host"),
+                port=exch_config.get("port"),
+                client_id=exch_config.get("client_id", 1)
             )
 
-            # Initialize data manager
-            self.data_manager = DataManager(f"{self.db_path}_data")
-            self.data_manager.add_broker(self.venue, self.broker)
+            # Register order callbacks
+            self.trading_system.register_order_callback("order_filled", self._on_order_filled)
+            self.trading_system.register_order_callback( "order_rejected", self._on_order_rejected)
+            # trading_system.register_order_callback('trade_executed', self.on_trade_executed)
 
             # Get initial portfolio from broker
-            self.initial_portfolio = self._get_initial_portfolio()
+            # self.initial_portfolio = self._get_initial_portfolio()
 
             # Update run config with initial portfolio
             self._update_run_config_initial_portfolio()
 
             # Initialize strategy engine
-            current_date = (
-                date.today()
-                if not self.start_date
-                else datetime.strptime(self.start_date, "%Y-%m-%d").date()
-            )
+            current_date = ( date.today() if not self.start_date else datetime.strptime(self.start_date, "%Y-%m-%d").date())
+
             self.strategy_engine = UnifiedStrategyEngine(self.strategy_config)
             self.strategy_engine.initialize(
                 current_date=current_date,
@@ -130,7 +141,7 @@ class StrategyManager:
             )
 
             self.is_initialized = True
-            update_run_status(self.db_path, self.run_id, "INITIAL")
+            # update_run_status(self.db_path, self.run_id, "INITIAL")
 
             return True
 
@@ -142,9 +153,7 @@ class StrategyManager:
     def start(self) -> bool:
         """Start strategy execution"""
         if not self.is_initialized:
-            raise RuntimeError(
-                "Strategy manager not initialized. Call initialize() first."
-            )
+            raise RuntimeError( "Strategy manager not initialized. Call initialize() first.")
 
         try:
             update_run_status(self.db_path, self.run_id, "RUNNING")
@@ -154,9 +163,11 @@ class StrategyManager:
             # Determine execution mode
             if self.start_date and self.end_date:
                 # Historical backtesting mode
+                print("starting back testing.......")
                 self._start_backtest_mode()
             else:
                 # Live trading mode
+                print("starting forward testing .......")
                 self._start_live_mode()
 
             return True
@@ -179,16 +190,15 @@ class StrategyManager:
             update_run_status(self.db_path, self.run_id, "FINISHED")
 
         # Disconnect from broker
-        if self.broker:
-            self.broker.disconnect()
+        self.trading_system.shutdown()
 
     def _start_live_mode(self):
         """Start live trading mode"""
         # Subscribe to market data for required instruments
         self._subscribe_to_market_data()
-
         # Start processing thread
         self._processing_thread = threading.Thread(target=self._process_tick_queue)
+        self._processing_thread.daemon = True
         self._processing_thread.start()
 
     def _start_backtest_mode(self):
@@ -201,14 +211,9 @@ class StrategyManager:
 
     def _subscribe_to_market_data(self):
         """Subscribe to real-time market data"""
-        # Subscribe to underlying instrument
-        underlying_contract = self._create_underlying_contract()
-        self.data_manager.subscribe_real_time_data(
-            underlying_contract, self._on_tick_callback, self.venue
-        )
-
-        # Subscribe to option contracts (will be determined by strategy engine)
-        # This will be handled dynamically as positions are opened
+        ## placeholder values for now
+        sub_id = self.trading_system.subscribe_market_data("SPY", "SMART", self._on_tick_callback, SecurityType.STOCK, "USD", self.venue) 
+        print(f"Subscribed to market data, sub_id: {sub_id}")
 
     def _on_tick_callback(self, tick_data: TickData):
         """Callback for real-time tick data"""
@@ -246,9 +251,7 @@ class StrategyManager:
             option_chain = self._get_option_chain(tick_data.timestamp)
 
             # Process with strategy engine
-            signals = self.strategy_engine.process_tick(
-                tick_data, underlying_price, option_chain
-            )
+            signals = self.strategy_engine.process_tick( tick_data, underlying_price, option_chain)
 
             # Execute order signals
             for signal in signals:
@@ -272,17 +275,13 @@ class StrategyManager:
                 limit_price=signal.price,
                 time_in_force="DAY",
             )
-
             # Submit order
-            order_id = self.order_manager.submit_order(
-                signal.contract, order, self.venue
-            )
+            order_id = self.trading_system.order_manager.submit_order(signal.contract, order, self.venue)
 
             # Add to order queue for tracking
             self.order_queue.put(
                 {"order_id": order_id, "signal": signal, "timestamp": datetime.now()}
             )
-
         except Exception as e:
             print(f"Error executing order signal: {e}")
             self._handle_error(e)
@@ -350,17 +349,13 @@ class StrategyManager:
         duration_days = (end_dt - start_dt).days
 
         # Get historical data
-        historical_data = self.data_manager.get_historical_data(
-            contract, f"{duration_days} D", "1 min", self.venue
-        )
+        historical_data = self.trading_system.data_manager.get_historical_data(contract, f"{duration_days} D", "1 min", self.venue)
 
         return historical_data
 
     def _create_underlying_contract(self) -> Contract:
         """Create contract for underlying instrument"""
-        return Contract(
-            symbol="NIFTY", security_type="CASH", exchange="NSE", currency="INR"
-        )
+        return Contract(symbol="SPY", security_type="STK", exchange="SMART", currency="USD", conId = 756733)
 
     def _get_underlying_price(self, tick_data: TickData) -> float:
         """Get current underlying price"""
@@ -373,15 +368,17 @@ class StrategyManager:
 
     def _get_option_chain(self, timestamp: pd.Timestamp) -> Optional[pd.DataFrame]:
         """Get option chain for given timestamp"""
-        # This would typically query the broker for option chain
-        # For now, return None (will be implemented based on broker capabilities)
-        return None
+        ## placeholder args for now
+        contract = Contract(symbol="SPY", security_type="STK", exchange="SMART", currency="USD", conId = 756733)
 
-    def _get_initial_portfolio(self) -> Dict:
+        #fixme: this should be for the sepecified timestamp. Right now we dont have an impl for that
+        return self.trading_system.get_option_chain(self.venue, contract) 
+
+    def _get_initial_portfolio(self) -> Dict[str, Any]:
         """Get initial portfolio from broker"""
         try:
-            positions = self.broker.get_positions()
-            account_info = self.broker.get_account_info()
+            positions = self.trading_system.get_positions()
+            account_info = self.trading_system.get_account_info()
 
             return {
                 "positions": positions,

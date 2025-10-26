@@ -10,7 +10,7 @@ def live_trading_example():
     
     # Create strategy manager for live trading
     manager = StrategyManager(
-        venue="ib",  # Use paper trading broker
+        venue="interactive_brokers",  # Use paper trading broker
         strategy_name="atm_short_straddle_1100_1515"
     )
     
@@ -27,21 +27,21 @@ def live_trading_example():
             return
         
         # Start live trading
-        # print("Starting live trading...")
-        # if manager.start():
-        #     print("✓ Live trading started")
+        print("Starting live trading..........")
+        if manager.start():
+            print("✓ Live trading started")
             
-        #     # Let it run for a while (in real usage, this would be until exit_time)
-        #     import time
-        #     time.sleep(10)  # Run for 10 seconds as example
+            # Let it run for a while (in real usage, this would be until exit_time)
+            import time
+            time.sleep(10)  # Run for 10 seconds as example
             
-        #     # Stop trading
-        #     print("Stopping trading...")
-        #     manager.stop()
-        #     print("✓ Trading stopped")
-        # else:
-        #     print("✗ Failed to start live trading")
-    
+            # Stop trading
+            print("Stopping trading...")
+            manager.stop()
+            print("✓ Trading stopped")
+        else:
+            print("✗ Failed to start live trading")
+
     except Exception as e:
         print(f"Error in live trading: {e}")
         manager.stop()

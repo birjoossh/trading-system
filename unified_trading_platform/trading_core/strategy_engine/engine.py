@@ -6,7 +6,7 @@ from typing import Dict, List
 from dataclasses import dataclass
 import numpy as np, pandas as pd
 
-from config import (
+from .config import (
     StrategyConfig,
     LegSpec,
     StrikeCriteria,
@@ -15,7 +15,7 @@ from config import (
     TrailRule,
     ReEntryRule,
 )
-from strikes import select_strike
+from .strikes import select_strike
 
 
 def weekly_expiry_for(date: dt.date) -> dt.date:

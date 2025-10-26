@@ -108,8 +108,7 @@ class OrderManager:
         broker.register_callback('order_status', self._on_order_status)
         broker.register_callback('trade_execution', self._on_trade_execution)
 
-    def submit_order(self, contract: Contract, order: Order,
-                    broker_name: str) -> str:
+    def submit_order(self, contract: Contract, order: Order, broker_name: str) -> str:
         """Submit an order through specified broker"""
         if broker_name not in self.brokers:
             raise ValueError(f"Broker '{broker_name}' not found")

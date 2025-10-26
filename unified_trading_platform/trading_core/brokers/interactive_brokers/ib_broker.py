@@ -326,7 +326,9 @@ class IBBroker(BrokerInterface):
             'data': {}
         }
 
+        print("above ib_contract = ")
         ib_contract = self._create_ib_contract(contract)
+        print("ib_contract = ", ib_contract)
         try:
             # Set market data type
             md_type_map = {
@@ -338,6 +340,7 @@ class IBBroker(BrokerInterface):
             self.client.reqMarketDataType(md_type_map.get(market_data_type, 3))
             self.client.reqMktData(req_id, ib_contract, subscription.generic_tick_list, snapshot, regulatory_snapshot, generic_tick_list or [])
             
+            print("subscription done.........")
             return subscription_id
         except Exception as e:
             print(f"Error subscribing to market data: {e}")

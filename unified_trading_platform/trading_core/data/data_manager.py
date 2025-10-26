@@ -8,9 +8,9 @@ from typing import List, Dict, Optional, Callable
 from datetime import datetime, timedelta
 from dataclasses import asdict
 import sqlite3
+import json
 
-from trading_core.brokers.base_broker import BrokerInterface, Contract, BarData, TickData
-
+from unified_trading_platform.trading_core.brokers.base_broker import BrokerInterface, Contract, BarData, TickData
 
 class DataManager:
     """Manages market data storage and retrieval"""
@@ -147,6 +147,7 @@ class DataManager:
             # Forward to user's callback
             callback(tick_data)
         # Use broker to subscribe
+        print("subscribing to market data for") #, json.dumps(asdict(contract)))
         return broker.subscribe_market_data(contract, storage_and_user_callback)
 
     def _store_tick_data(self, tick_data):
@@ -159,7 +160,7 @@ class DataManager:
                 """,
                 (
                     tick_data.exchange,
-                    tick_data.security_type,
+                    tick_data.security_type.value,
                     tick_data.symbol,
                     tick_data.currency,
                     tick_data.timestamp,
