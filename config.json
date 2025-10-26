@@ -11,7 +11,7 @@
   },
   "logging": {
     "level": "INFO",
-    "file": "trading_system.log"
+    "file": "trading_core.log"
   },
   "system": {
     "max_concurrent_orders": 100,

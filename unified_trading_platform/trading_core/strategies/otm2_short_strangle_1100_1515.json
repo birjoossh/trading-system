@@ -1,0 +1,47 @@
+{
+  "strategy_type": "Intraday",
+  "underlying_from": "Cash",
+  "entry_time": "11:00",
+  "exit_time": "15:15",
+  "square_off_mode": "Partial",
+  "lot_size": 75,
+  "legs": [
+    {
+      "segment": "Options",
+      "position": "Sell",
+      "option_type": "CE",
+      "expiry": "Weekly",
+      "qty_lots": 1,
+      "strike_criteria": {
+        "mode": "STRIKE_TYPE",
+        "params": { "strike_type": "OTM2", "symbol": "NIFTY", "strike_step": 50 }
+      },
+      "risk": {
+        "target": { "enabled": true,  "basis": "premium_pct", "value": 25 },
+        "sl":     { "enabled": true,  "basis": "premium_pct", "value": 20 },
+        "trail":  { "enabled": false, "basis": "points",      "value": 0 }
+      },
+      "reentry_on_sl":     { "enabled": true,  "mode": "RE_ASAP",  "max_count": 1 },
+      "reentry_on_target": { "enabled": true,  "mode": "RE_COST",  "max_count": 1 }
+    },
+    {
+      "segment": "Options",
+      "position": "Sell",
+      "option_type": "PE",
+      "expiry": "Weekly",
+      "qty_lots": 1,
+      "strike_criteria": {
+        "mode": "STRIKE_TYPE",
+        "params": { "strike_type": "OTM2", "symbol": "NIFTY", "strike_step": 50 }
+      },
+      "risk": {
+        "target": { "enabled": true,  "basis": "premium_pct", "value": 25 },
+        "sl":     { "enabled": true,  "basis": "premium_pct", "value": 20 },
+        "trail":  { "enabled": false, "basis": "points",      "value": 0 }
+      },
+      "reentry_on_sl":     { "enabled": true,  "mode": "RE_ASAP",  "max_count": 1 },
+      "reentry_on_target": { "enabled": true,  "mode": "RE_COST",  "max_count": 1 }
+    }
+  ],
+  "costs": { "per_lot_roundtrip": 0.0, "slippage_per_fill": 0.0 }
+}
