@@ -4,13 +4,18 @@ Extracted and refactored from the Backtester class to work with live and histori
 """
 
 from __future__ import annotations
-import math
-import datetime as dt
-import copy
-from typing import Dict, List, Optional, Any
-from dataclasses import dataclass
+from typing import List, Dict, Optional, Any
+from datetime import datetime, time, timedelta
+from dataclasses import dataclass, field
 import pandas as pd
 import numpy as np
+
+from unified_trading_platform.trading_core.utils import get_logger
+from unified_trading_platform.trading_core.brokers.base_broker import TickData, OrderSignal, Contract, OrderAction, OrderType
+from .base_engine import BaseStrategyEngine
+
+# Initialize logger
+logger = get_logger(__name__)
 
 from .config import StrategyConfig, LegSpec, StrikeCriteria, RiskConfig, RiskRule, TrailRule, ReEntryRule
 from .strikes import select_strike
@@ -81,7 +86,7 @@ class UnifiedStrategyEngine:
         if not self.is_initialized:
             raise RuntimeError("Engine not initialized. Call initialize() first.")
         
-        print("Processing tick for strategy: ", self.config.name)
+        logger.debug(f"Processing tick for strategy: {self.config.name}")
         signals = []
         
         # Update current positions with new tick data
