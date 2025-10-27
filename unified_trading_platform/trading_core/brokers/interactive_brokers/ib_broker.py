@@ -758,6 +758,8 @@ class IBClient(EWrapper, EClient):
                 underlying_contract=underlying_contract,
                 expiration_dates=expiration_dates,
                 strikes=strike_prices,
+                trading_class=tradingClass,
+                tick_size=multiplier,
                 options=[]  # Individual option contracts would be created separately
             )
             self.pending_option_chains[reqId]['result'] = option_chain

@@ -2,6 +2,7 @@
 Utility modules for the trading system.
 """
 
+from .logger import setup_logger, get_logger
 from .rest_client import RESTClient, RESTResponse, RESTClientBuilder, create_rest_client, create_rest_client_builder
 from .auth_manager import (
     AuthManager, APIKeyAuth, BearerTokenAuth, OAuth2Auth, HMACAuth, 

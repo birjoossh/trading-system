@@ -138,6 +138,7 @@ def main():
             currency="USD",
             conId = 756733
         )
+        print("underlying = ", spy_underlying)
         get_contract_details(broker, spy_underlying)
 
         option_chain = get_option_chain(broker, spy_underlying)

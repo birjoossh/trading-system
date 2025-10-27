@@ -81,6 +81,7 @@ class UnifiedStrategyEngine:
         if not self.is_initialized:
             raise RuntimeError("Engine not initialized. Call initialize() first.")
         
+        print("Processing tick for strategy: ", self.config.name)
         signals = []
         
         # Update current positions with new tick data

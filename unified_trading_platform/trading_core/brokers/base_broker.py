@@ -190,6 +190,8 @@ class OptionChain:
     """Represents option chain data for a given underlying"""
     underlying_symbol: str
     underlying_contract: Contract
+    tick_size: int
+    trading_class: str
     expiration_dates: List[str]
     strikes: List[float]
     options: List[Contract]  # List of option contracts

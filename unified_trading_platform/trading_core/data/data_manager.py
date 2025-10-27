@@ -10,7 +10,11 @@ from dataclasses import asdict
 import sqlite3
 import json
 
+from unified_trading_platform.trading_core.utils import get_logger
 from unified_trading_platform.trading_core.brokers.base_broker import BrokerInterface, Contract, BarData, TickData
+
+# Initialize logger
+logger = get_logger(__name__)
 
 class DataManager:
     """Manages market data storage and retrieval"""
@@ -152,7 +156,7 @@ class DataManager:
             # Forward to user's callback
             callback(tick_data)
         # Use broker to subscribe
-        print("subscribing to market data for") #, json.dumps(asdict(contract)))
+        logger.info(f"Subscribing to market data for {json.dumps(asdict(contract))}")
         return broker.subscribe_market_data(contract, storage_and_user_callback)
 
     def _store_tick_data(self, tick_data):

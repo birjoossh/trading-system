@@ -6,9 +6,16 @@ Coordinates broker connections, market data, strategy engine, and order manageme
 import queue
 import threading
 import time
-from datetime import datetime, date, time as dt_time
-from typing import Optional, Dict, List, Any
+import os
+from typing import Dict, List, Optional, Any
+from datetime import datetime, time
 import pandas as pd
+from dataclasses import asdict
+
+from unified_trading_platform.trading_core.utils import get_logger
+
+# Initialize logger
+logger = get_logger(__name__)
 
 from unified_trading_platform.trading_core.config.config import Config
 from ..brokers.broker_factory import BrokerFactory
@@ -19,7 +26,8 @@ from ..brokers.base_broker import (
     OrderAction,
     OrderType,
     TickData,
-    SecurityType
+    SecurityType,
+    OptionChain
 )
 from ..orders.order_manager import OrderManager, ManagedOrder
 from ..data.data_manager import DataManager
@@ -81,15 +89,15 @@ class StrategyManager:
 
     def on_order_filled(self, order):
         """Callback for when an order is filled"""
-        print(f"ORDER FILLED: {order.contract.symbol} - {order.filled_quantity} shares")
+        logger.info(f"Order filled: {order.contract.symbol} - {order.filled_quantity} shares")
 
     def on_trade_executed(self, trade):
         """Callback for trade execution"""
-        print(f"TRADE EXECUTED: {trade.contract.symbol} - {trade.quantity} @ ${trade.price}")
+        logger.info(f"Trade executed: {trade.contract.symbol} - {trade.quantity} @ ${trade.price}")
 
     def on_market_data(self, tick_data):
         """Callback for market data updates"""
-        print(f"Market Data: {tick_data.symbol} - Bid: {tick_data.bid}, Ask: {tick_data.ask}, Last: {tick_data.last}")
+        logger.debug(f"Market data update - {tick_data.symbol}: Bid={tick_data.bid}, Ask={tick_data.ask}, Last={tick_data.last}")
 
     def initialize(self) -> bool:
         """Initialize the strategy manager"""
@@ -194,7 +202,7 @@ class StrategyManager:
 
     def _start_live_mode(self):
         """Start live trading mode"""
-        # Subscribe to market data for required instruments
+        logger.info("Starting forward testing mode")
         self._subscribe_to_market_data()
         # Start processing thread
         self._processing_thread = threading.Thread(target=self._process_tick_queue)
@@ -203,17 +211,15 @@ class StrategyManager:
 
     def _start_backtest_mode(self):
         """Start historical backtesting mode"""
-        # Get historical data
+        logger.info("Starting backtesting mode")
         historical_data = self._get_historical_data()
-
-        # Process historical data as tick stream
         self._process_historical_data(historical_data)
 
     def _subscribe_to_market_data(self):
         """Subscribe to real-time market data"""
         ## placeholder values for now
         sub_id = self.trading_system.subscribe_market_data("SPY", "SMART", self._on_tick_callback, SecurityType.STOCK, "USD", self.venue) 
-        print(f"Subscribed to market data, sub_id: {sub_id}")
+        logger.info(f"Subscribed to market data with subscription ID: {sub_id}")
 
     def _on_tick_callback(self, tick_data: TickData):
         """Callback for real-time tick data"""
@@ -222,24 +228,40 @@ class StrategyManager:
 
     def _process_tick_queue(self):
         """Main processing loop for tick queue"""
-        while self.is_running and not self._stop_event.is_set():
+        while not self._stop_event.is_set():
             try:
-                # Get tick with timeout
                 tick_data = self.tick_queue.get(timeout=1.0)
-
-                # Process the tick
                 self._process_tick(tick_data)
-
-                # Check exit conditions
-                if self._should_exit():
-                    break
-
             except queue.Empty:
                 continue
             except Exception as e:
-                print(f"Error processing tick: {e}")
+                logger.error(f"Error processing tick: {e}", exc_info=True)
                 self._handle_error(e)
                 break
+
+    def option_chain_to_df(self, option_chain: OptionChain) -> pd.DataFrame:
+        """
+        Create a simplified DataFrame from an OptionChain.
+        Each row represents a strike/expiry combination.
+        """
+        option_chain_dict = asdict(option_chain)
+        # Create all combinations of expiries and strikes
+        expiries = option_chain_dict['expiration_dates']
+        strikes = option_chain_dict['strikes']
+        
+        # Create a row for each combination
+        rows = []
+        for expiry in expiries:
+            for strike in strikes:
+                rows.append({
+                    'underlying_symbol': option_chain_dict['underlying_symbol'],
+                    'expiry': expiry,
+                    'strike': strike,
+                    'trading_class': option_chain_dict['trading_class'],
+                    'tick_size': option_chain_dict['tick_size'],
+                    'last_updated': option_chain_dict['last_updated']
+                })
+        return pd.DataFrame(rows)
 
     def _process_tick(self, tick_data: TickData):
         """Process a single tick"""
@@ -249,6 +271,8 @@ class StrategyManager:
 
             # Get option chain if needed
             option_chain = self._get_option_chain(tick_data.timestamp)
+            df_option_chain = self.option_chain_to_df(option_chain)
+            logger.debug(f"Option chain data: {df_option_chain.to_string()}")
 
             # Process with strategy engine
             signals = self.strategy_engine.process_tick( tick_data, underlying_price, option_chain)
@@ -261,7 +285,7 @@ class StrategyManager:
             self._update_portfolio_and_pnl()
 
         except Exception as e:
-            print(f"Error processing tick: {e}")
+            logger.error(f"Error processing tick: {e}", exc_info=True)
             self._handle_error(e)
 
     def _execute_order_signal(self, signal: OrderSignal):
@@ -283,7 +307,7 @@ class StrategyManager:
                 {"order_id": order_id, "signal": signal, "timestamp": datetime.now()}
             )
         except Exception as e:
-            print(f"Error executing order signal: {e}")
+            logger.error(f"Error executing order signal: {e}", exc_info=True)
             self._handle_error(e)
 
     def _on_order_filled(self, order: ManagedOrder):
@@ -305,12 +329,12 @@ class StrategyManager:
             self._update_portfolio_and_pnl()
 
         except Exception as e:
-            print(f"Error handling order fill: {e}")
+            logger.error(f"Error handling order fill: {e}", exc_info=True)
             self._handle_error(e)
 
     def _on_order_rejected(self, order: ManagedOrder):
         """Handle order rejection"""
-        print(f"Order rejected: {order.order_id}")
+        logger.warning(f"Order rejected: {order.order_id}")
         # Could implement retry logic here
 
     def _process_historical_data(self, historical_data: pd.DataFrame):
@@ -368,10 +392,10 @@ class StrategyManager:
 
     def _get_option_chain(self, timestamp: pd.Timestamp) -> Optional[pd.DataFrame]:
         """Get option chain for given timestamp"""
-        ## placeholder args for now
-        contract = Contract(symbol="SPY", security_type="STK", exchange="SMART", currency="USD", conId = 756733)
-
-        #fixme: this should be for the sepecified timestamp. Right now we dont have an impl for that
+        #fixme: placeholder args for now
+        contract = Contract(symbol="SPY", security_type=SecurityType.STOCK, exchange="", currency="USD", conId=756733)
+        logger.debug(f"Fetching option chain for contract: {contract}")
+        # TODO: This should be for the specified timestamp. Right now we don't have an implementation for that
         return self.trading_system.get_option_chain(self.venue, contract) 
 
     def _get_initial_portfolio(self) -> Dict[str, Any]:
@@ -386,7 +410,7 @@ class StrategyManager:
                 "total_value": account_info.get("total_value", 0.0),
             }
         except Exception as e:
-            print(f"Error getting initial portfolio: {e}")
+            logger.error(f"Error getting initial portfolio: {e}", exc_info=True)
             return {}
 
     def _update_run_config_initial_portfolio(self):
@@ -432,7 +456,7 @@ class StrategyManager:
             )
 
         except Exception as e:
-            print(f"Error updating portfolio and PnL: {e}")
+            logger.error(f"Error updating portfolio and PnL: {e}", exc_info=True)
 
     def _find_signal_for_order(self, order_id: str) -> Optional[OrderSignal]:
         """Find the signal that corresponds to an order"""
