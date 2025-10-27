@@ -11,8 +11,8 @@ import pandas as pd
 import numpy as np
 
 from unified_trading_platform.trading_core.utils import get_logger
-from unified_trading_platform.trading_core.brokers.base_broker import TickData, OrderSignal, Contract, OrderAction, OrderType
-from .base_engine import BaseStrategyEngine
+from unified_trading_platform.trading_core.brokers.base_broker import TickData, Contract, OrderAction, OrderType
+#from .base_engine import BaseStrategyEngine
 
 # Initialize logger
 logger = get_logger(__name__)
@@ -20,13 +20,6 @@ logger = get_logger(__name__)
 from .config import StrategyConfig, LegSpec, StrikeCriteria, RiskConfig, RiskRule, TrailRule, ReEntryRule
 from .strikes import select_strike
 from ..brokers.base_broker import Contract, Order, OrderAction, OrderType, TickData
-
-# Re-export from engine.py for compatibility
-from .engine import (
-    weekly_expiry_for, monthly_expiry_for, next_weekly_expiry_for, next_monthly_expiry_for,
-    resolve_expiry_keyword, REENTRY_MODES, _reverse_position, _risk_from_any, _reentry_from_any,
-    _is_short, _hit_target, _hit_stop, _trail_stop, LiveLeg, PendingReEntry
-)
 
 @dataclass
 class OrderSignal:
@@ -38,6 +31,16 @@ class OrderSignal:
     order_type: OrderType = OrderType.MARKET
     leg_id: Optional[int] = None
     parent_leg_id: Optional[int] = None  # For re-entries
+    comment: str = ""  # Optional comment about the signal
+
+# Re-export from engine.py for compatibility
+from .engine import (
+    weekly_expiry_for, monthly_expiry_for, next_weekly_expiry_for, next_monthly_expiry_for,
+    resolve_expiry_keyword, REENTRY_MODES, _reverse_position, _risk_from_any, _reentry_from_any,
+    _is_short, _hit_target, _hit_stop, _trail_stop, LiveLeg, PendingReEntry
+)
+
+__all__ = ['UnifiedStrategyEngine', 'OrderSignal']  # Export OrderSignal
 
 class UnifiedStrategyEngine:
     """Unified strategy engine for tick-by-tick processing"""

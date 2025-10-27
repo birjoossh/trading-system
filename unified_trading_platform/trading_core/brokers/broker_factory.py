@@ -3,8 +3,13 @@ Broker factory for creating broker instances.
 Supports multiple brokers through a unified interface.
 """
 
+import logging
 from typing import Dict, Type
 from .base_broker import BrokerInterface
+from unified_trading_platform.trading_core.utils import get_logger
+
+# Initialize logger
+logger = get_logger(__name__)
 
 class BrokerFactory:
     """Factory for creating broker instances"""
@@ -19,13 +24,15 @@ class BrokerFactory:
     @classmethod
     def create_broker(cls, name: str, **kwargs) -> BrokerInterface:
         """Create a broker instance"""
-        print("Available brokers ", cls._brokers, name)
+        logger.debug(f"Available brokers: {list(cls._brokers.keys())}, requested: {name}")
         if name not in cls._brokers:
             available = ', '.join(cls._brokers.keys())
-            raise ValueError(f"Broker '{name}' not found. Available: {available}")
+            error_msg = f"Broker '{name}' not found. Available: {available}"
+            logger.error(error_msg)
+            raise ValueError(error_msg)
 
         broker_class = cls._brokers[name]
-        print("broker_class = ", broker_class)
+        logger.debug(f"Creating broker instance of type: {broker_class.__name__}")
         return broker_class(**kwargs)
 
     @classmethod

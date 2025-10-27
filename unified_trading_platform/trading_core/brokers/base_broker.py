@@ -8,6 +8,7 @@ from typing import List, Dict, Any, Optional, Callable, Union
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
+from dataclasses import dataclass, field
 
 class OrderType(Enum):
     MARKET = "MKT"
@@ -127,6 +128,25 @@ class BarData:
     volume: int
 
 @dataclass
+class ManagedOrder:
+    """Enhanced order with additional tracking information"""
+    order_id: str
+    broker_order_id: Optional[str]
+    contract: 'Contract'
+    order: 'Order'
+    broker_name: str
+    status: 'OrderStatus'
+    created_at: datetime
+    updated_at: datetime = field(default_factory=datetime.now)
+    filled_quantity: int = 0
+    remaining_quantity: int = 0
+    avg_fill_price: Optional[float] = None
+    parent_id: Optional[str] = None
+    client_id: Optional[str] = None
+    tags: Dict[str, Any] = field(default_factory=dict)
+    notes: Optional[str] = None
+
+
 class TickData:
     """Enhanced real-time tick data with comprehensive market data support"""
     timestamp: datetime

@@ -18,32 +18,6 @@ from ..brokers.base_broker import (
 # Initialize logger
 logger = get_logger(__name__)
 
-@dataclass
-class ManagedOrder:
-    """Enhanced order with additional tracking information"""
-    order_id: str
-    broker_order_id: Optional[str]
-    contract: Contract
-    order: BaseOrder
-    broker_name: str
-    status: OrderStatus
-    created_at: datetime
-    updated_at: datetime
-    filled_quantity: int = 0
-    remaining_quantity: int = 0
-    avg_fill_price: float = 0.0
-    commission: float = 0.0
-    trades: List[Trade] = None
-
-    def __str__(self):
-        return ', '.join(
-            f"{f.name}={getattr(self, f.name)!r}" for f in fields(self)
-        )
-
-    def __post_init__(self):
-        if self.trades is None:
-            self.trades = []
-
 class OrderManager:
     """Manages orders across multiple brokers"""
 
