@@ -156,7 +156,7 @@ class DataManager:
             # Forward to user's callback
             callback(tick_data)
         # Use broker to subscribe
-        logger.info(f"Subscribing to market data for {json.dumps(asdict(contract))}")
+        logger.info(f"Subscribing to market data for {asdict(contract)}")
         return broker.subscribe_market_data(contract, storage_and_user_callback)
 
     def _store_tick_data(self, tick_data):

@@ -88,8 +88,8 @@ class UnifiedStrategyEngine:
         """Process a single tick and return order signals"""
         if not self.is_initialized:
             raise RuntimeError("Engine not initialized. Call initialize() first.")
-        
-        logger.debug(f"Processing tick for strategy: {self.config.name}")
+
+        logger.debug(f"Processing tick for strategy: {self.config}")
         signals = []
         
         # Update current positions with new tick data

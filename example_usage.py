@@ -8,24 +8,28 @@ from json import json
 from datetime import datetime, timedelta
 from unified_trading_platform.trading_core.main import TradingSystem
 from unified_trading_platform.trading_core.config.config import Config
+from unified_trading_platform.trading_core.utils import get_logger
+
+# Initialize logger
+logger = get_logger(__name__)
 
 def print_section(title):
     """Print a formatted section header"""
-    print("\n" + "="*60)
-    print(f" {title}")
-    print("="*60)
+    logger.info("\n" + "="*60)
+    logger.info(f" {title}")
+    logger.info("="*60)
 
 def on_order_filled(order):
     """Callback for when an order is filled"""
-    print(f"ORDER FILLED: {order.contract.symbol} - {order.filled_quantity} shares")
+    logger.info(f"ORDER FILLED: {order.contract.symbol} - {order.filled_quantity} shares")
 
 def on_trade_executed(trade):
     """Callback for trade execution"""
-    print(f"TRADE EXECUTED: {trade.contract.symbol} - {trade.quantity} @ ${trade.price}")
+    logger.info(f"TRADE EXECUTED: {trade.contract.symbol} - {trade.quantity} @ ${trade.price}")
 
 def on_market_data(tick_data):
     """Callback for market data updates"""
-    print(f"Market Data: {tick_data.symbol} - Bid: {tick_data.bid}, Ask: {tick_data.ask}, Last: {tick_data.last}")
+    logger.info(f"Market Data: {tick_data.symbol} - Bid: {tick_data.bid}, Ask: {tick_data.ask}, Last: {tick_data.last}")
 
 def main():
     """Main example function"""
@@ -39,7 +43,7 @@ def main():
     # Add Interactive Brokers
     print_section("Adding Interactive Brokers")
     ib_config = config.get_broker_config("interactive_brokers")
-    print("ib_config = ", ib_config)
+    logger.debug(f"ib_config = {ib_config}")
     success = trading_system.add_broker(
         name="ib",
         broker_type="ib",
@@ -49,7 +53,7 @@ def main():
     )
 
     if not success:
-        print("Failed to connect to Interactive Brokers. Make sure TWS/Gateway is running.")
+        logger.error("Failed to connect to Interactive Brokers. Make sure TWS/Gateway is running.")
         return
 
     # Register callbacks
@@ -60,7 +64,7 @@ def main():
         # Get Historical Data
         print_section("Getting Historical Data")
 
-        print("Fetching historical data for AAPL...")
+        logger.info("Fetching historical data for AAPL...")
         hist_data = trading_system.get_historical_data(
             symbol="AAPL",
             exchange="NASDAQ",
@@ -71,9 +75,9 @@ def main():
             broker_name="ib"
         )
         if not hist_data.empty:
-            print(f"Retrieved {len(hist_data)} bars")
-            print("Latest 5 bars:")
-            print(hist_data.tail())
+            logger.info(f"Retrieved {len(hist_data)} bars")
+            logger.info("Latest 5 bars:")
+            logger.info(f"\n{hist_data.tail()}")
 
         # Subscribe to Market Data
         print_section("Subscribing to Market Data")
@@ -91,7 +95,7 @@ def main():
         print_section("Order Management Examples")
 
         # Submit a limit buy order
-        print("Submitting limit buy order for 100 AAPL shares...")
+        logger.info("Submitting limit buy order for 100 AAPL shares...")
         current_price = hist_data['close'].iloc[-1] if not hist_data.empty else 150.0
         limit_price = 255.46 #current_price #* 0.99  # 1% below current price
 
@@ -103,10 +107,10 @@ def main():
             limit_price=limit_price,
             broker_name="ib"
         )
-        print(f"Buy order submitted with ID: {buy_order_id}")
+        logger.info(f"Buy order submitted with ID: {buy_order_id}")
 
         # Submit a limit sell order
-        print("Submitting limit sell order for 50 AAPL shares...")
+        logger.info("Submitting limit sell order for 50 AAPL shares...")
         sell_limit_price = 255.46 #current_price * 1.01  # 1% above current price
 
         sell_order_id = trading_system.submit_limit_order(
@@ -118,22 +122,22 @@ def main():
             broker_name="ib"
         )
 
-        print(f"Sell order submitted with ID: {sell_order_id}")
+        logger.info(f"Sell order submitted with ID: {sell_order_id}")
 
         # Wait a moment for order updates
         time.sleep(3)
 
         # Check order status
-        print("\nChecking order status...")
+        logger.info("\nChecking order status...")
         buy_status = trading_system.get_order_status(buy_order_id)
         sell_status = trading_system.get_order_status(sell_order_id)
 
-        print(f"Buy Order Status: {buy_status.get('status', 'Unknown')}")
-        print(f"Sell Order Status: {sell_status.get('status', 'Unknown')}")
+        logger.info(f"Buy Order Status: {buy_status.get('status', 'Unknown')}")
+        logger.info(f"Sell Order Status: {sell_status.get('status', 'Unknown')}")
 
         # Get all orders
         all_orders = trading_system.get_all_orders()
-        print(f"\nTotal orders in system: {len(all_orders)}")
+        logger.info(f"\nTotal orders in system: {len(all_orders)}")
 
         # # Example 4: Cancel Orders
         # print_section("Cancelling Orders")
@@ -151,21 +155,21 @@ def main():
 
         account_info = trading_system.get_account_info("ib")
         if account_info:
-            print(f"Account Information: ${json.dump()}")
+            logger.info(f"Account Information: ${json.dump()}")
 
         # Positions
         positions = trading_system.get_positions()
-        print(f"\nCurrent Positions: {json.dump(positions)}")
+        logger.info(f"\nCurrent Positions: {json.dump(positions)}")
        
         # Order History
         print_section("Order History")
         order_history = trading_system.get_order_history()
-        print(f"All orders in history: {json.dump(order_history)}")
+        logger.info(f"All orders in history: {json.dump(order_history)}")
 
         market_data_thread.join()
 
     except Exception as e:
-        print(f"Error during example execution: {e}")
+        logger.error(f"Error during example execution: {e}", exc_info=True)
     finally:
         # Clean shutdown
         print_section("Shutting Down")

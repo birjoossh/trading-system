@@ -11,6 +11,11 @@ from typing import Dict, List, Optional, Union, Any
 from datetime import datetime, date
 import warnings
 
+from .logger import get_logger
+
+# Initialize logger
+logger = get_logger(__name__)
+
 class H5DataReader:
     """Utility class for reading and processing H5 files containing market data"""
     
@@ -380,40 +385,40 @@ def example_usage():
     try:
         with H5DataReader("data/nifty_data.h5") as reader:
             spot_df = reader.read_spot_series("NIFTY")
-            print("Spot series shape:", spot_df.shape)
-            print("Spot series head:")
-            print(spot_df.head())
+            logger.info(f"Spot series shape: {spot_df.shape}")
+            logger.info("Spot series head:")
+            logger.info(f"\n{spot_df.head()}")
     except Exception as e:
-        print(f"Error reading spot series: {e}")
+        logger.error(f"Error reading spot series: {e}", exc_info=True)
     
     # Example 2: Reading options table
     try:
         with H5DataReader("data/nifty_data.h5") as reader:
             options_df = reader.read_options_table("NIFTY")
-            print("Options table shape:", options_df.shape)
-            print("Options table columns:", options_df.columns.tolist())
+            logger.info(f"Options table shape: {options_df.shape}")
+            logger.info(f"Options table columns: {options_df.columns.tolist()}")
     except Exception as e:
-        print(f"Error reading options table: {e}")
+        logger.error(f"Error reading options table: {e}", exc_info=True)
     
     # Example 3: Reading OHLCV data
     try:
         with H5DataReader("data/nifty_data.h5") as reader:
-            ohlcv_df = reader.read_ohlcv_data("NIFTY", "1min")
-            print("OHLCV data shape:", ohlcv_df.shape)
-            print("OHLCV data head:")
-            print(ohlcv_df.head())
+            ohlcv_df = reader.read_ohlcv_data("NIFTY")
+            logger.info(f"OHLCV data shape: {ohlcv_df.shape}")
+            logger.info("OHLCV data head:")
+            logger.info(f"\n{ohlcv_df.head()}")
     except Exception as e:
-        print(f"Error reading OHLCV data: {e}")
+        logger.error(f"Error reading OHLCV data: {e}", exc_info=True)
     
     # Example 4: Getting file information
     try:
         with H5DataReader("data/nifty_data.h5") as reader:
             info = reader.get_file_info()
-            print("File info:")
-            print(f"  Groups: {info['groups']}")
-            print(f"  Datasets: {info['datasets']}")
+            logger.info("File info:")
+            logger.info(f"  Groups: {info['groups']}")
+            logger.info(f"  Datasets: {info['datasets']}")
     except Exception as e:
-        print(f"Error getting file info: {e}")
+        logger.error(f"Error getting file info: {e}", exc_info=True)
 
 if __name__ == "__main__":
     example_usage()

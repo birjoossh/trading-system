@@ -3,10 +3,14 @@ Example usage of the StrategyManager for both live trading and backtesting.
 """
 
 from unified_trading_platform.trading_core.strategy_engine.strategy_manager import StrategyManager
+from unified_trading_platform.trading_core.utils import get_logger
+
+# Initialize logger
+logger = get_logger(__name__)
 
 def live_trading_example():
     """Example of live trading with StrategyManager"""
-    print("=== Live Trading Example ===")
+    logger.info("=== Live Trading Example ===")
     
     # Create strategy manager for live trading
     manager = StrategyManager(
@@ -16,39 +20,39 @@ def live_trading_example():
     
     try:
         # Initialize the manager
-        print("Initializing strategy manager...")
+        logger.info("Initializing strategy manager...")
         if manager.initialize():
-            print("✓ Strategy manager initialized successfully")
-            print(f"Run ID: {manager.run_id}")
-            print(f"Strategy: {manager.strategy_name}")
-            print(f"Venue: {manager.venue}")
+            logger.info("✓ Strategy manager initialized successfully")
+            logger.info(f"Run ID: {manager.run_id}")
+            logger.info(f"Strategy: {manager.strategy_name}")
+            logger.info(f"Venue: {manager.venue}")
         else:
-            print("✗ Failed to initialize strategy manager")
+            logger.error("✗ Failed to initialize strategy manager")
             return
         
         # Start live trading
-        print("Starting live trading..........")
+        logger.info("Starting live trading..........")
         if manager.start():
-            print("✓ Live trading started")
+            logger.info("✓ Live trading started")
             
             # Let it run for a while (in real usage, this would be until exit_time)
             import time
             time.sleep(10)  # Run for 10 seconds as example
             
             # Stop trading
-            print("Stopping trading...")
+            logger.info("Stopping trading...")
             manager.stop()
-            print("✓ Trading stopped")
+            logger.info("✓ Trading stopped")
         else:
-            print("✗ Failed to start live trading")
+            logger.error("✗ Failed to start live trading")
 
     except Exception as e:
-        print(f"Error in live trading: {e}")
+        logger.error(f"Error in live trading: {e}", exc_info=True)
         manager.stop()
 
 def backtesting_example():
     """Example of backtesting with StrategyManager"""
-    print("\n=== Backtesting Example ===")
+    logger.info("\n=== Backtesting Example ===")
     
     # Create strategy manager for backtesting
     manager = StrategyManager(
@@ -60,14 +64,14 @@ def backtesting_example():
     
     try:
         # Initialize the manager
-        print("Initializing strategy manager for backtesting...")
+        logger.info("Initializing strategy manager for backtesting...")
         if manager.initialize():
-            print("✓ Strategy manager initialized successfully")
-            print(f"Run ID: {manager.run_id}")
-            print(f"Strategy: {manager.strategy_name}")
-            print(f"Backtest period: {manager.start_date} to {manager.end_date}")
+            logger.info("✓ Strategy manager initialized successfully")
+            logger.info(f"Run ID: {manager.run_id}")
+            logger.info(f"Strategy: {manager.strategy_name}")
+            logger.info(f"Backtest period: {manager.start_date} to {manager.end_date}")
         else:
-            print("✗ Failed to initialize strategy manager")
+            logger.error("✗ Failed to initialize strategy manager")
             return
         
         # Start backtesting
@@ -82,12 +86,12 @@ def backtesting_example():
         #     print("✗ Failed to start backtesting")
     
     except Exception as e:
-        print(f"Error in backtesting: {e}")
+        logger.error(f"Error in backtesting: {e}", exc_info=True)
         manager.stop()
 
 def check_strategy_status():
     """Example of checking strategy status"""
-    print("\n=== Strategy Status Check ===")
+    logger.info("\n=== Strategy Status Check ===")
     
     # This would typically be used to check status of a running strategy
     manager = StrategyManager(
@@ -97,20 +101,20 @@ def check_strategy_status():
     
     # Get status information
     status = manager.get_status()
-    print(f"Strategy Status: {status}")
+    logger.info(f"Strategy Status: {status}")
     
     # Get portfolio summary
     portfolio = manager.get_portfolio_summary()
-    print(f"Portfolio: {portfolio}")
+    logger.info(f"Portfolio: {portfolio}")
 
 if __name__ == "__main__":
-    print("Strategy Manager Examples")
-    print("=" * 50)
+    logger.info("Strategy Manager Examples")
+    logger.info("=" * 50)
     
     # Run examples
     live_trading_example()
     # backtesting_example()
     # check_strategy_status()
     
-    print("\n" + "=" * 50)
-    print("Examples completed!")
+    logger.info("\n" + "=" * 50)
+    logger.info("Examples completed!")

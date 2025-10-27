@@ -7,6 +7,11 @@ import json
 import os
 from typing import Dict, Any, Optional
 
+from unified_trading_platform.trading_core.utils import get_logger
+
+# Initialize logger
+logger = get_logger(__name__)
+
 class Config:
     """Configuration manager"""
 
@@ -21,7 +26,7 @@ class Config:
                 with open(self.config_file, 'r') as f:
                     return json.load(f)
             except Exception as e:
-                print(f"Error loading config: {e}")
+                logger.error(f"Error loading config: {e}", exc_info=True)
                 return self._default_config()
         else:
             config = self._default_config()
@@ -83,9 +88,9 @@ class Config:
 
         try:
             with open(self.config_file, 'w') as f:
-                json.dump(config_to_save, f, indent=2)
+                json.dump(config_to_save, f, indent=4)
         except Exception as e:
-            print(f"Error saving config: {e}")
+            logger.error(f"Error saving config: {e}", exc_info=True)
 
     def get_broker_config(self, broker_name: str) -> Dict[str, Any]:
         """Get broker configuration"""

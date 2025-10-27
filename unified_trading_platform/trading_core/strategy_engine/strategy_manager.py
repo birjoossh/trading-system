@@ -5,10 +5,10 @@ Coordinates broker connections, market data, strategy engine, and order manageme
 
 import queue
 import threading
-import time
+import time as time_module  # Rename to avoid conflict
 import os
 from typing import Dict, List, Optional, Any
-from datetime import datetime, time
+from datetime import datetime, date
 import pandas as pd
 from dataclasses import asdict
 
@@ -101,7 +101,7 @@ class StrategyManager:
 
     def initialize(self) -> bool:
         """Initialize the strategy manager"""
-        print("DEBUG: Starting initialization of StrategyManager")
+        logger.debug("Starting initialization of StrategyManager")
         try:
             # Load strategy configuration
             self.strategy_config = load_strategy_config(self.strategy_name)
@@ -117,7 +117,7 @@ class StrategyManager:
                 exit_time=self.strategy_config.exit_time,
             )
             exch_config = self.config.get_broker_config(self.venue)
-            print(f"DEBUG: Broker config: {exch_config}")
+            logger.debug(f"Broker config: {exch_config}")
 
             self.trading_system.add_broker(
                 name=self.venue,
@@ -139,7 +139,7 @@ class StrategyManager:
             self._update_run_config_initial_portfolio()
 
             # Initialize strategy engine
-            current_date = ( date.today() if not self.start_date else datetime.strptime(self.start_date, "%Y-%m-%d").date())
+            current_date = (date.today() if not self.start_date else datetime.strptime(self.start_date, "%Y-%m-%d").date())
 
             self.strategy_engine = UnifiedStrategyEngine(self.strategy_config)
             self.strategy_engine.initialize(
@@ -171,11 +171,11 @@ class StrategyManager:
             # Determine execution mode
             if self.start_date and self.end_date:
                 # Historical backtesting mode
-                print("starting back testing.......")
+                logger.info("Starting backtesting mode")
                 self._start_backtest_mode()
             else:
                 # Live trading mode
-                print("starting forward testing .......")
+                logger.info("Starting forward testing mode")
                 self._start_live_mode()
 
             return True
@@ -275,7 +275,7 @@ class StrategyManager:
             logger.debug(f"Option chain data: {df_option_chain.to_string()}")
 
             # Process with strategy engine
-            signals = self.strategy_engine.process_tick( tick_data, underlying_price, option_chain)
+            signals = self.strategy_engine.process_tick( tick_data, underlying_price, df_option_chain)
 
             # Execute order signals
             for signal in signals:
@@ -478,7 +478,7 @@ class StrategyManager:
 
     def _handle_error(self, error: Exception):
         """Handle errors during execution"""
-        print(f"Strategy execution error: {error}")
+        logger.error(f"Strategy execution error: {error}", exc_info=True)
         update_run_status(self.db_path, self.run_id, "ERROR", str(error))
         self.is_running = False
 

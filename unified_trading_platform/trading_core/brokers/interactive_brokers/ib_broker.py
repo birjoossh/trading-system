@@ -8,6 +8,11 @@ import time
 from typing import List, Dict, Any, Callable, Optional
 from datetime import datetime
 
+from unified_trading_platform.trading_core.utils import get_logger
+
+# Initialize logger
+logger = get_logger(__name__)
+
 try:
     from ibapi.client import EClient
     from ibapi.wrapper import EWrapper
@@ -17,7 +22,7 @@ try:
     IB_AVAILABLE = True
 except ImportError:
     IB_AVAILABLE = False
-    print("IB API not available. Install with: pip install ibapi")
+    logger.warning("IB API not available. Install with: pip install ibapi")
 
 from ..base_broker import (
     BrokerInterface, Contract, Order, Trade, BarData, TickData,
@@ -30,7 +35,7 @@ class IBBroker(BrokerInterface):
     """Interactive Brokers implementation"""
 
     def __init__(self, host, port, client_id=1):
-        print("Initializing...")
+        logger.info("Initializing IBBroker...")
         super().__init__()
         if not IB_AVAILABLE:
             raise ImportError("IB API not available. Install with: pip install ibapi")
@@ -54,20 +59,20 @@ class IBBroker(BrokerInterface):
         self._api_thread = None
         self._connected_event = threading.Event()
         self._lock = threading.RLock()
-        print("done initialization....")
+        logger.info("IBBroker initialization complete")
 
     def connect(self) -> bool:
         """Connect to IB TWS/Gateway ..."""
-        print(f"Attempting to connect to IB at {self.host}:{self.port} with client ID {self.client_id}")
+        logger.info(f"Attempting to connect to IB at {self.host}:{self.port} with client ID {self.client_id}")
 
         if self.is_connected:
-            print("Already connected to IB")
+            logger.info("Already connected to IB")
             return True
         
         self._connected_event.clear()
         try:
             self.client.connect(self.host, self.port, self.client_id)
-            print("Connection request sent to IB...")
+            logger.debug("Connection request sent to IB...")
             
             # Start API thread
             self._api_thread = threading.Thread(target=self.client.run, daemon=True)
@@ -75,7 +80,7 @@ class IBBroker(BrokerInterface):
             
             # Wait for connection with timeout
             if not self._connected_event.wait(timeout=20):
-                print("❌ Connection timeout - IB did not respond within 10 seconds")
+                logger.error("Connection timeout - IB did not respond within 20 seconds")
                 try:
                     self.client.disconnect()
                 except Exception:
@@ -83,16 +88,16 @@ class IBBroker(BrokerInterface):
                 return False
                 
             self.is_connected = True
-            print(f"✅ Successfully connected to IB at {self.host}:{self.port} with client ID {self.client_id}")
+            logger.info(f"Successfully connected to IB at {self.host}:{self.port} with client ID {self.client_id}")
 
             # Update account info
             self._req_account_updates()
             return True
 
         except Exception as e:
-            print(f"❌ Connection error: {e}")
+            logger.error(f"Connection error: {e}", exc_info=True)
             if "502" in str(e):
-                print("Make sure TWS or IB Gateway is running 4002: IB Gateway Simulated Trading")
+                logger.error("Make sure TWS or IB Gateway is running 4002: IB Gateway Simulated Trading")
             return False
 
     def disconnect(self) -> bool:
@@ -104,10 +109,10 @@ class IBBroker(BrokerInterface):
             self._connected_event.clear()
             if self._api_thread and self._api_thread.is_alive():
                 self._api_thread.join(timeout=2.0)
-            print("Disconnected from IB")
+            logger.info("Disconnected from IB")
             return True
         except Exception as e:
-            print(f"Disconnect error: {e}")
+            logger.error(f"Disconnect error: {e}", exc_info=True)
             return False
 
     def _req_account_updates(self):
@@ -149,14 +154,9 @@ class IBBroker(BrokerInterface):
 
         # Debug output for options
         if contract.security_type == SecurityType.OPTION:
-            print(f"Created IB option contract:")
-            print(f"  Symbol: {ib_contract.symbol}")
-            print(f"  SecType: {ib_contract.secType}")
-            print(f"  Exchange: {ib_contract.exchange}")
-            print(f"  Expiry: {ib_contract.lastTradeDateOrContractMonth}")
-            print(f"  Strike: {ib_contract.strike}")
-            print(f"  Right: {ib_contract.right}")
-            print(f"  Multiplier: {ib_contract.multiplier}")
+            logger.debug(f"Created IB option contract: Symbol={ib_contract.symbol}, SecType={ib_contract.secType}, "
+                        f"Exchange={ib_contract.exchange}, Expiry={ib_contract.lastTradeDateOrContractMonth}, "
+                        f"Strike={ib_contract.strike}, Right={ib_contract.right}, Multiplier={ib_contract.multiplier}")
 
         return ib_contract
 
@@ -223,7 +223,7 @@ class IBBroker(BrokerInterface):
                     )
                     bars.append(bar_data)
                 except (ValueError, AttributeError) as e:
-                    print(f"Error parsing bar data: {e}")
+                    logger.error(f"Error parsing bar data: {e}", exc_info=True)
                     continue
         finally:
             if req_id in self.historical_data:
@@ -261,7 +261,7 @@ class IBBroker(BrokerInterface):
             self.client.placeOrder(int(order_id), ib_contract, ib_order)
             return order_id
         except Exception as e:
-            print(f"Error submitting order {order_id}: {e}")
+            logger.error(f"Error submitting order {order_id}: {e}", exc_info=True)
             del self.orders[order_id]
             raise e
 
@@ -276,7 +276,7 @@ class IBBroker(BrokerInterface):
             self.client.cancelOrder(int(order_id))
             return True
         except Exception as e:
-            print(f"Error cancelling order {order_id}: {e}")
+            logger.error(f"Error cancelling order {order_id}: {e}", exc_info=True)
             return False
 
     def get_order_status(self, order_id: str) -> Dict[str, Any]:
@@ -317,7 +317,7 @@ class IBBroker(BrokerInterface):
             callback=callback,
             is_active=True
         )
-        print("subscription.generic_tick_list = ", subscription.generic_tick_list)
+        logger.debug(f"subscription.generic_tick_list = {subscription.generic_tick_list}")
         self.market_data_subscriptions[subscription_id] = subscription
         self.market_data[req_id] = {
             'subscription_id': subscription_id,
@@ -326,9 +326,9 @@ class IBBroker(BrokerInterface):
             'data': {}
         }
 
-        print("above ib_contract = ")
+        logger.debug("Creating IB contract for market data subscription")
         ib_contract = self._create_ib_contract(contract)
-        print("ib_contract = ", ib_contract)
+        logger.debug(f"ib_contract = {ib_contract}")
         try:
             # Set market data type
             md_type_map = {
@@ -340,10 +340,10 @@ class IBBroker(BrokerInterface):
             self.client.reqMarketDataType(md_type_map.get(market_data_type, 3))
             self.client.reqMktData(req_id, ib_contract, subscription.generic_tick_list, snapshot, regulatory_snapshot, generic_tick_list or [])
             
-            print("subscription done.........")
+            logger.info(f"Market data subscription completed: {subscription_id}")
             return subscription_id
         except Exception as e:
-            print(f"Error subscribing to market data: {e}")
+            logger.error(f"Error subscribing to market data: {e}", exc_info=True)
             if subscription_id in self.market_data_subscriptions:
                 del self.market_data_subscriptions[subscription_id]
             if req_id in self.market_data:
@@ -370,7 +370,7 @@ class IBBroker(BrokerInterface):
                     self.client.cancelMktData(req_id)
                     del self.market_data[req_id]
                 except Exception as e:
-                    print(f"Error unsubscribing from market data: {e}")
+                    logger.error(f"Error unsubscribing from market data: {e}", exc_info=True)
                 return False
         
         del self.market_data_subscriptions[subscription_id]
@@ -465,7 +465,7 @@ class IBBroker(BrokerInterface):
                 'underlying_contract': underlying_contract,
                 'result': None
             }
-            print("underlying conId = ", underlying_contract.conId if hasattr(underlying_contract, 'conId') else 0)
+            logger.debug(f"underlying conId = {underlying_contract.conId if hasattr(underlying_contract, 'conId') else 0}")
             # Request option chain
             self.client.reqSecDefOptParams(req_id, underlying_contract.symbol, underlying_contract.exchange, underlying_contract.security_type.value, underlying_contract.conId if hasattr(underlying_contract, 'conId') else 0)
 
@@ -475,13 +475,13 @@ class IBBroker(BrokerInterface):
                 raise TimeoutError("Timeout waiting for option chain")
 
             if req_id in self.client.pending_option_chains and self.client.pending_option_chains[req_id].get('result'):
-                print("received option chain results")
+                logger.debug("Received option chain results")
                 option_chain = self.client.pending_option_chains[req_id].get('result')
                 #self.option_chains[cache_key] = option_chain
                 del self.client.pending_option_chains[req_id]
                 return option_chain
         except Exception as e:
-            print(f"Error getting option chain: {e}")
+            logger.error(f"Error getting option chain: {e}", exc_info=True)
             if req_id in self.client.pending_option_chains:
                 del self.client.pending_option_chains[req_id]
             raise e
@@ -519,7 +519,7 @@ class IBBroker(BrokerInterface):
             self.market_data_type = market_data_type
             return True
         except Exception as e:
-            print(f"Error setting market data type: {e}")
+            logger.error(f"Error setting market data type: {e}", exc_info=True)
             return False
 
 class IBClient(EWrapper, EClient):
@@ -819,28 +819,28 @@ class IBClient(EWrapper, EClient):
             self.pending_contract_details[reqId]['event'].set()
 
     def error(self, reqId: int, errorCode: int, errorString: str, advancedOrderRejectJson: str = ""):
-        """Handle errors for contract details requests"""
+        """Handle errors with enhanced market data error tracking"""
+        # Handle contract details errors
         if reqId in self.pending_contract_details:
             self.pending_contract_details[reqId]['error'] = f"{errorCode}: {errorString}"
             self.pending_contract_details[reqId]['event'].set()
-        else:
-            # Call parent error handler for other errors
-            super().error(reqId, errorCode, errorString)
-        """Handle errors with enhanced market data error tracking"""
-        if errorCode not in [2104, 2106, 2158]:  # Ignore harmless messages
-            print(f"IB Error {errorCode}: {errorString}")
+            return
             
-            # Track market data errors
-            if reqId in self.broker.market_data:
-                data = self.broker.market_data[reqId]
-                subscription_id = data.get('subscription_id')
+        # Log non-harmless errors
+        if errorCode not in [2104, 2106, 2158]:  # Ignore harmless messages
+            logger.error(f"IB Error {errorCode}: {errorString}")
+        
+        # Track market data errors
+        if reqId in self.broker.market_data:
+            data = self.broker.market_data[reqId]
+            subscription_id = data.get('subscription_id')
+            
+            if subscription_id:
+                error = MarketDataError(
+                    subscription_id=subscription_id,
+                    error_code=errorCode,
+                    error_message=errorString
+                )
                 
-                if subscription_id:
-                    error = MarketDataError(
-                        subscription_id=subscription_id,
-                        error_code=errorCode,
-                        error_message=errorString
-                    )
-                    
-                    # Trigger error callback
-                    self.broker.trigger_callback('market_data_error', error)
+                # Trigger error callback
+                self.broker.trigger_callback('market_data_error', error)

@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 
 def example_rest_client():
     """Example of using REST client with authentication and rate limiting"""
-    print("\n=== REST Client Example ===")
+    logger.info("\n=== REST Client Example ===")
     
     # Create authentication
     auth = create_api_key_auth("your-api-key", "X-API-Key")
@@ -46,7 +46,7 @@ def example_rest_client():
     try:
         # GET request
         response = client.get("/users/123")
-        print(f"GET Response: {response.status_code} - {response.data}")
+        logger.info(f"GET Response: {response.status_code} - {response.data}")
         
         # POST request with JSON data
         user_data = {
@@ -55,7 +55,7 @@ def example_rest_client():
             "age": 30
         }
         response = client.post("/users", json_data=user_data)
-        print(f"POST Response: {response.status_code} - {response.data}")
+        logger.info(f"POST Response: {response.status_code} - {response.data}")
         
         # PUT request (replace entire resource)
         updated_user = {
@@ -65,25 +65,25 @@ def example_rest_client():
             "address": "123 Main St"
         }
         response = client.put("/users/123", json_data=updated_user)
-        print(f"PUT Response: {response.status_code} - {response.data}")
+        logger.info(f"PUT Response: {response.status_code} - {response.data}")
         
         # PATCH request (partial update)
         patch_data = {"email": "newemail@example.com"}
         response = client.patch("/users/123", json_data=patch_data)
-        print(f"PATCH Response: {response.status_code} - {response.data}")
+        logger.info(f"PATCH Response: {response.status_code} - {response.data}")
         
         # DELETE request
         response = client.delete("/users/123")
-        print(f"DELETE Response: {response.status_code} - {response.data}")
+        logger.info(f"DELETE Response: {response.status_code} - {response.data}")
         
     except Exception as e:
-        print(f"Error: {e}")
+        logger.info(f"Error: {e}")
     finally:
         client.close()
 
 def example_trading_api_client():
     """Example of using trading API client"""
-    print("\n=== Trading API Client Example ===")
+    logger.info("\n=== Trading API Client Example ===")
     
     # Create authentication for trading API
     auth = create_hmac_auth("api-key", "secret-key")
@@ -101,11 +101,11 @@ def example_trading_api_client():
     try:
         # Get account info
         response = trading_client.get_account_info()
-        print(f"Account Info: {response.status_code} - {response.data}")
+        logger.info(f"Account Info: {response.status_code} - {response.data}")
         
         # Get positions
         response = trading_client.get_positions()
-        print(f"Positions: {response.status_code} - {response.data}")
+        logger.info(f"Positions: {response.status_code} - {response.data}")
         
         # Submit order
         order_data = {
@@ -116,42 +116,42 @@ def example_trading_api_client():
             "price": 150.00
         }
         response = trading_client.submit_order(order_data)
-        print(f"Order Submitted: {response.status_code} - {response.data}")
+        logger.info(f"Order Submitted: {response.status_code} - {response.data}")
         
         # Get market data
         response = trading_client.get_market_data("AAPL")
-        print(f"Market Data: {response.status_code} - {response.data}")
+        logger.info(f"Market Data: {response.status_code} - {response.data}")
         
         # Get historical data
         response = trading_client.get_historical_data(
             "AAPL", "2024-01-01", "2024-01-31", "1d"
         )
-        print(f"Historical Data: {response.status_code} - {response.data}")
+        logger.info(f"Historical Data: {response.status_code} - {response.data}")
         
     except Exception as e:
-        print(f"Error: {e}")
+        logger.info(f"Error: {e}")
     finally:
         trading_client.close()
 
 def example_websocket_client():
     """Example of using WebSocket client"""
-    print("\n=== WebSocket Client Example ===")
+    logger.info("\n=== WebSocket Client Example ===")
     
     # Create WebSocket client
     ws_client = create_websocket_client("wss://echo.websocket.org")
     
     # Set up event handlers
     def on_connect():
-        print("WebSocket connected!")
+        logger.info("WebSocket connected!")
     
     def on_disconnect():
-        print("WebSocket disconnected!")
+        logger.info("WebSocket disconnected!")
     
     def on_message(message: WebSocketMessage):
-        print(f"Received message: {message.data}")
+        logger.info(f"Received message: {message.data}")
     
     def on_error(error: Exception):
-        print(f"WebSocket error: {error}")
+        logger.info(f"WebSocket error: {error}")
     
     ws_client.set_on_connect(on_connect)
     ws_client.set_on_disconnect(on_disconnect)
@@ -161,7 +161,7 @@ def example_websocket_client():
     try:
         # Connect
         if ws_client.connect():
-            print("Connected to WebSocket")
+            logger.info("Connected to WebSocket")
             
             # Send some messages
             ws_client.send_text("Hello WebSocket!")
@@ -172,34 +172,34 @@ def example_websocket_client():
             
             # Disconnect
             ws_client.disconnect()
-            print("Disconnected from WebSocket")
+            logger.info("Disconnected from WebSocket")
         else:
-            print("Failed to connect to WebSocket")
+            logger.info("Failed to connect to WebSocket")
             
     except Exception as e:
-        print(f"Error: {e}")
+        logger.info(f"Error: {e}")
 
 def example_trading_websocket_client():
     """Example of using trading WebSocket client"""
-    print("\n=== Trading WebSocket Client Example ===")
+    logger.info("\n=== Trading WebSocket Client Example ===")
     
     # Create trading WebSocket client
     trading_ws = create_trading_websocket_client("wss://stream.trading.com")
     
     def on_connect():
-        print("Trading WebSocket connected!")
+        logger.info("Trading WebSocket connected!")
         # Subscribe to quotes and trades
         trading_ws.subscribe_to_quotes(["AAPL", "MSFT", "GOOGL"])
         trading_ws.subscribe_to_trades(["AAPL", "MSFT"])
     
     def on_disconnect():
-        print("Trading WebSocket disconnected!")
+        logger.info("Trading WebSocket disconnected!")
     
     def on_message(message: WebSocketMessage):
-        print(f"Trading data: {message.data}")
+        logger.info(f"Trading data: {message.data}")
     
     def on_reconnect():
-        print("Reconnecting...")
+        logger.info("Reconnecting...")
         # Resubscribe to all previous subscriptions
         trading_ws.resubscribe_all()
     
@@ -211,7 +211,7 @@ def example_trading_websocket_client():
     try:
         # Connect
         if trading_ws.connect():
-            print("Connected to trading WebSocket")
+            logger.info("Connected to trading WebSocket")
             
             # Wait for some data
             time.sleep(5)
@@ -224,16 +224,16 @@ def example_trading_websocket_client():
             
             # Disconnect
             trading_ws.disconnect()
-            print("Disconnected from trading WebSocket")
+            logger.info("Disconnected from trading WebSocket")
         else:
-            print("Failed to connect to trading WebSocket")
+            logger.info("Failed to connect to trading WebSocket")
             
     except Exception as e:
-        print(f"Error: {e}")
+        logger.info(f"Error: {e}")
 
 def example_advanced_rest_client():
     """Example of advanced REST client configuration"""
-    print("\n=== Advanced REST Client Example ===")
+    logger.info("\n=== Advanced REST Client Example ===")
     
     # Create client using builder pattern
     client = (create_rest_client_builder()
@@ -249,20 +249,20 @@ def example_advanced_rest_client():
     try:
         # Make requests with custom headers
         response = client.get("/data", headers={"X-Custom-Header": "value"})
-        print(f"Advanced GET: {response.status_code}")
+        logger.info(f"Advanced GET: {response.status_code}")
         
         # Make request with query parameters
         response = client.get("/search", params={"q": "trading", "limit": 10})
-        print(f"Search: {response.status_code}")
+        logger.info(f"Search: {response.status_code}")
         
     except Exception as e:
-        print(f"Error: {e}")
+        logger.info(f"Error: {e}")
     finally:
         client.close()
 
 def example_rate_limiting():
     """Example of different rate limiting strategies"""
-    print("\n=== Rate Limiting Example ===")
+    logger.info("\n=== Rate Limiting Example ===")
     
     # Fixed window rate limiter
     fixed_limiter = create_sliding_window_limiter(10, 60)  # 10 requests per minute
@@ -270,30 +270,30 @@ def example_rate_limiting():
     # Adaptive rate limiter
     adaptive_limiter = create_adaptive_limiter(50, 60, min_requests=1, max_requests=200)
     
-    print("Testing rate limiters...")
+    logger.info("Testing rate limiters...")
     
     # Test fixed window limiter
     for i in range(15):
         if fixed_limiter.acquire():
-            print(f"Fixed limiter: Request {i+1} allowed")
+            logger.info(f"Fixed limiter: Request {i+1} allowed")
         else:
-            print(f"Fixed limiter: Request {i+1} blocked")
+            logger.info(f"Fixed limiter: Request {i+1} blocked")
     
-    print(f"Remaining requests: {fixed_limiter.get_remaining_requests()}")
+    logger.info(f"Remaining requests: {fixed_limiter.get_remaining_requests()}")
     
     # Test adaptive limiter
     for i in range(5):
         if adaptive_limiter.acquire():
-            print(f"Adaptive limiter: Request {i+1} allowed")
+            logger.info(f"Adaptive limiter: Request {i+1} allowed")
             # Simulate response time
             adaptive_limiter.record_response_time("default", 0.5)  # Fast response
         else:
-            print(f"Adaptive limiter: Request {i+1} blocked")
+            logger.info(f"Adaptive limiter: Request {i+1} blocked")
 
 def main():
     """Run all examples"""
-    print("Trading System Utilities Examples")
-    print("=" * 50)
+    logger.info("Trading System Utilities Examples")
+    logger.info("=" * 50)
     
     # Run examples
     example_rest_client()
@@ -303,7 +303,7 @@ def main():
     example_advanced_rest_client()
     example_rate_limiting()
     
-    print("\nAll examples completed!")
+    logger.info("\nAll examples completed!")
 
 if __name__ == "__main__":
     main()

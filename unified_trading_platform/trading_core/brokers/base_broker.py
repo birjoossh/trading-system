@@ -8,7 +8,11 @@ from typing import List, Dict, Any, Optional, Callable, Union
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-from dataclasses import dataclass, field
+
+from unified_trading_platform.trading_core.utils import get_logger
+
+# Initialize logger
+logger = get_logger(__name__)
 
 class OrderType(Enum):
     MARKET = "MKT"
@@ -146,7 +150,7 @@ class ManagedOrder:
     tags: Dict[str, Any] = field(default_factory=dict)
     notes: Optional[str] = None
 
-
+@dataclass
 class TickData:
     """Enhanced real-time tick data with comprehensive market data support"""
     timestamp: datetime
@@ -239,7 +243,7 @@ class BrokerInterface(ABC):
     @abstractmethod
     def connect(self, **kwargs) -> bool:
         """Establish connection to broker"""
-        print("here at base_broker ...")
+        logger.debug("Base broker connect method called")
         pass
 
     @abstractmethod
@@ -336,4 +340,4 @@ class BrokerInterface(ABC):
                 try:
                     callback(*args, **kwargs)
                 except Exception as e:
-                    print(f"Error in callback {callback.__name__}: {e}")
+                    logger.error(f"Error in callback {callback.__name__}: {e}", exc_info=True)

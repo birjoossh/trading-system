@@ -46,7 +46,7 @@ try:
     BrokerFactory.register_broker('ib', IBBroker)
     BrokerFactory.register_broker('interactive_brokers', IBBroker)
 except ImportError:
-    print("Interactive Brokers not available")
+    logger.warning("Interactive Brokers not available")
 
 # TODO: Add other brokers here
 # BrokerFactory.register_broker('alpaca', AlpacaBroker)
@@ -58,4 +58,4 @@ try:
     from .paper_broker import PaperBroker
     BrokerFactory.register_broker('paper', PaperBroker)
 except ImportError:
-    print("Paper broker not available")
+    logger.warning("Paper broker not available")

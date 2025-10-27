@@ -16,6 +16,11 @@ from enum import Enum
 import ssl
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type, AsyncRetrying
 
+from .logger import get_logger
+
+# Initialize logger
+logger = get_logger(__name__)
+
 # Import websockets exceptions properly
 try:
     from websockets.exceptions import ConnectionClosed, InvalidHandshake, InvalidURI
@@ -447,13 +452,13 @@ class WebSocketClient:
 if __name__ == "__main__":
     # Example usage
     def on_message(message: WebSocketMessage):
-        print(f"Received: {message.data}")
+        logger.info(f"Received: {message.data}")
     
     def on_connect():
-        print("Connected to WebSocket")
+        logger.info("Connected to WebSocket")
     
     def on_disconnect():
-        print("Disconnected from WebSocket")
+        logger.info("Disconnected from WebSocket")
     
     # Create client
     client = WebSocketClient("wss://echo.websocket.org")
@@ -464,7 +469,7 @@ if __name__ == "__main__":
     # Connect and send message
     if client.connect():
         for _ in range(1000):
-            print("sending msg ...")
+            logger.info("Sending message...")
             client.send("Hello WebSocket!")
             time.sleep(1)
         client.disconnect()
