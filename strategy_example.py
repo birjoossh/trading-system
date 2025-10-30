@@ -7,24 +7,28 @@ import time
 from datetime import datetime, timedelta
 from unified_trading_platform.unified_trading_platform.trading_core.main import TradingSystem
 from unified_trading_platform.unified_trading_platform.trading_core.config.config import Config
+from unified_trading_platform.trading_core.utils import get_logger
+
+# Initialize logger
+logger = get_logger(__name__)
 
 def print_section(title):
     """Print a formatted section header"""
-    print("\n" + "="*60)
-    print(f" {title}")
-    print("="*60)
+    logger.info("\n" + "="*60)
+    logger.info(f" {title}")
+    logger.info("="*60)
 
 def on_order_filled(order):
     """Callback for when an order is filled"""
-    print(f"ORDER FILLED: {order.contract.symbol} - {order.filled_quantity} shares")
+    logger.info(f"ORDER FILLED: {order.contract.symbol} - {order.filled_quantity} shares")
 
 def on_trade_executed(trade):
     """Callback for trade execution"""
-    print(f"TRADE EXECUTED: {trade.contract.symbol} - {trade.quantity} @ ${trade.price}")
+    logger.info(f"TRADE EXECUTED: {trade.contract.symbol} - {trade.quantity} @ ${trade.price}")
 
 def on_market_data(tick_data):
     """Callback for market data updates"""
-    print(f"Market Data: {tick_data.symbol} - Bid: {tick_data.bid}, Ask: {tick_data.ask}, Last: {tick_data.last}")
+    logger.info(f"Market Data: {tick_data.symbol} - Bid: {tick_data.bid}, Ask: {tick_data.ask}, Last: {tick_data.last}")
 
 def main():
     """Main example function"""
@@ -48,7 +52,7 @@ def main():
     )
 
     if not success:
-        print("Failed to connect to Interactive Brokers. Make sure TWS/Gateway is running.")
+        logger.info("Failed to connect to Interactive Brokers. Make sure TWS/Gateway is running.")
         return
 
     # Register callbacks
@@ -59,7 +63,7 @@ def main():
         # Example 1: Get Historical Data
         print_section("Getting Historical Data")
 
-        print("Fetching historical data for AAPL...")
+        logger.info("Fetching historical data for AAPL...")
         hist_data = unified_trading_platform.trading_core.get_historical_data(
             symbol="AAPL",
             exchange="SMART",
@@ -71,23 +75,23 @@ def main():
         )
 
         if not hist_data.empty:
-            print(f"Retrieved {len(hist_data)} bars")
-            print("Latest 5 bars:")
-            print(hist_data.tail())
+            logger.info(f"Retrieved {len(hist_data)} bars")
+            logger.info("Latest 5 bars:")
+            logger.info(hist_data.tail())
 
             # Calculate some simple statistics
-            print(f"\nPrice Statistics:")
-            print(f"Current Price: ${hist_data['close'].iloc[-1]:.2f}")
-            print(f"5-Day High: ${hist_data['high'].max():.2f}")
-            print(f"5-Day Low: ${hist_data['low'].min():.2f}")
-            print(f"Average Volume: {hist_data['volume'].mean():.0f}")
+            logger.info(f"\nPrice Statistics:")
+            logger.info(f"Current Price: ${hist_data['close'].iloc[-1]:.2f}")
+            logger.info(f"5-Day High: ${hist_data['high'].max():.2f}")
+            logger.info(f"5-Day Low: ${hist_data['low'].min():.2f}")
+            logger.info(f"Average Volume: {hist_data['volume'].mean():.0f}")
         else:
-            print("No historical data received")
+            logger.info("No historical data received")
 
         # Example 2: Subscribe to Market Data
         print_section("Subscribing to Market Data")
 
-        print("Subscribing to AAPL market data...")
+        logger.info("Subscribing to AAPL market data...")
         unified_trading_platform.trading_core.subscribe_market_data(
             symbol="AAPL",
             exchange="SMART",
@@ -96,14 +100,14 @@ def main():
         )
 
         # Let it run for a few seconds to see market data
-        print("Receiving market data for 10 seconds...")
+        logger.info("Receiving market data for 10 seconds...")
         time.sleep(10)
 
         # Example 3: Submit Orders
         print_section("Order Management Examples")
 
         # Submit a limit buy order
-        print("Submitting limit buy order for 100 AAPL shares...")
+        logger.info("Submitting limit buy order for 100 AAPL shares...")
         current_price = hist_data['close'].iloc[-1] if not hist_data.empty else 150.0
         limit_price = current_price * 0.99  # 1% below current price
 
@@ -116,10 +120,10 @@ def main():
             broker_name="ib_paper"
         )
 
-        print(f"Buy order submitted with ID: {buy_order_id}")
+        logger.info(f"Buy order submitted with ID: {buy_order_id}")
 
         # Submit a limit sell order
-        print("Submitting limit sell order for 50 AAPL shares...")
+        logger.info("Submitting limit sell order for 50 AAPL shares...")
         sell_limit_price = current_price * 1.01  # 1% above current price
 
         sell_order_id = unified_trading_platform.trading_core.submit_limit_order(
@@ -131,66 +135,66 @@ def main():
             broker_name="ib_paper"
         )
 
-        print(f"Sell order submitted with ID: {sell_order_id}")
+        logger.info(f"Sell order submitted with ID: {sell_order_id}")
 
         # Wait a moment for order updates
         time.sleep(3)
 
         # Check order status
-        print("\nChecking order status...")
+        logger.info("\nChecking order status...")
         buy_status = unified_trading_platform.trading_core.get_order_status(buy_order_id)
         sell_status = unified_trading_platform.trading_core.get_order_status(sell_order_id)
 
-        print(f"Buy Order Status: {buy_status.get('status', 'Unknown')}")
-        print(f"Sell Order Status: {sell_status.get('status', 'Unknown')}")
+        logger.info(f"Buy Order Status: {buy_status.get('status', 'Unknown')}")
+        logger.info(f"Sell Order Status: {sell_status.get('status', 'Unknown')}")
 
         # Get all orders
         all_orders = unified_trading_platform.trading_core.get_all_orders()
-        print(f"\nTotal orders in system: {len(all_orders)}")
+        logger.info(f"\nTotal orders in system: {len(all_orders)}")
 
         # Example 4: Cancel Orders
         print_section("Cancelling Orders")
 
-        print(f"Cancelling buy order {buy_order_id}...")
+        logger.info(f"Cancelling buy order {buy_order_id}...")
         cancel_success = unified_trading_platform.trading_core.cancel_order(buy_order_id)
-        print(f"Cancel result: {'Success' if cancel_success else 'Failed'}")
+        logger.info(f"Cancel result: {'Success' if cancel_success else 'Failed'}")
 
-        print(f"Cancelling sell order {sell_order_id}...")
+        logger.info(f"Cancelling sell order {sell_order_id}...")
         cancel_success = unified_trading_platform.trading_core.cancel_order(sell_order_id)
-        print(f"Cancel result: {'Success' if cancel_success else 'Failed'}")
+        logger.info(f"Cancel result: {'Success' if cancel_success else 'Failed'}")
 
         # Example 5: Account Information
         print_section("Account Information")
 
         account_info = unified_trading_platform.trading_core.get_account_info("ib_paper")
         if account_info:
-            print("Account Information:")
+            logger.info("Account Information:")
             for key, value in account_info.items():
                 if isinstance(value, dict):
-                    print(f"  {key}: {value.get('value', 'N/A')}")
+                    logger.info(f"  {key}: {value.get('value', 'N/A')}")
                 else:
-                    print(f"  {key}: {value}")
+                    logger.info(f"  {key}: {value}")
         else:
-            print("No account information available")
+            logger.info("No account information available")
 
         # Example 6: Positions
         positions = unified_trading_platform.trading_core.get_positions()
-        print(f"\nCurrent Positions: {len(positions)}")
+        logger.info(f"\nCurrent Positions: {len(positions)}")
         for position in positions[:5]:  # Show first 5 positions
-            print(f"  {position.get('symbol', 'N/A')}: {position.get('position', 0)} shares")
+            logger.info(f"  {position.get('symbol', 'N/A')}: {position.get('position', 0)} shares")
 
         # Example 7: Order History
         print_section("Order History")
 
         order_history = unified_trading_platform.trading_core.get_order_history()
-        print(f"Total orders in history: {len(order_history)}")
+        logger.info(f"Total orders in history: {len(order_history)}")
 
         # Show recent orders
         for order in order_history[:3]:
-            print(f"  {order.get('symbol')} - {order.get('action')} {order.get('quantity')} - {order.get('status')}")
+            logger.info(f"  {order.get('symbol')} - {order.get('action')} {order.get('quantity')} - {order.get('status')}")
 
     except Exception as e:
-        print(f"Error during example execution: {e}")
+        logger.info(f"Error during example execution: {e}")
         import traceback
         traceback.print_exc()
 

@@ -4,24 +4,22 @@ Extracted and refactored from the Backtester class to work with live and histori
 """
 
 from __future__ import annotations
-import math
-import datetime as dt
-import copy
-from typing import Dict, List, Optional, Any
-from dataclasses import dataclass
+from typing import List, Dict, Optional, Any
+from datetime import datetime, time, timedelta
+from dataclasses import dataclass, field
 import pandas as pd
 import numpy as np
+
+from unified_trading_platform.trading_core.utils import get_logger
+from unified_trading_platform.trading_core.brokers.base_broker import TickData, Contract, OrderAction, OrderType
+#from .base_engine import BaseStrategyEngine
+
+# Initialize logger
+logger = get_logger(__name__)
 
 from .config import StrategyConfig, LegSpec, StrikeCriteria, RiskConfig, RiskRule, TrailRule, ReEntryRule
 from .strikes import select_strike
 from ..brokers.base_broker import Contract, Order, OrderAction, OrderType, TickData
-
-# Re-export from engine.py for compatibility
-from .engine import (
-    weekly_expiry_for, monthly_expiry_for, next_weekly_expiry_for, next_monthly_expiry_for,
-    resolve_expiry_keyword, REENTRY_MODES, _reverse_position, _risk_from_any, _reentry_from_any,
-    _is_short, _hit_target, _hit_stop, _trail_stop, LiveLeg, PendingReEntry
-)
 
 @dataclass
 class OrderSignal:
@@ -33,6 +31,16 @@ class OrderSignal:
     order_type: OrderType = OrderType.MARKET
     leg_id: Optional[int] = None
     parent_leg_id: Optional[int] = None  # For re-entries
+    comment: str = ""  # Optional comment about the signal
+
+# Re-export from engine.py for compatibility
+from .engine import (
+    weekly_expiry_for, monthly_expiry_for, next_weekly_expiry_for, next_monthly_expiry_for,
+    resolve_expiry_keyword, REENTRY_MODES, _reverse_position, _risk_from_any, _reentry_from_any,
+    _is_short, _hit_target, _hit_stop, _trail_stop, LiveLeg, PendingReEntry
+)
+
+__all__ = ['UnifiedStrategyEngine', 'OrderSignal']  # Export OrderSignal
 
 class UnifiedStrategyEngine:
     """Unified strategy engine for tick-by-tick processing"""
@@ -80,7 +88,8 @@ class UnifiedStrategyEngine:
         """Process a single tick and return order signals"""
         if not self.is_initialized:
             raise RuntimeError("Engine not initialized. Call initialize() first.")
-        
+
+        logger.debug(f"Processing tick for strategy: {self.config}")
         signals = []
         
         # Update current positions with new tick data

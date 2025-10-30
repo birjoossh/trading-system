@@ -3,40 +3,20 @@ Order manager for handling trade orders across multiple brokers.
 Provides unified interface for order submission, tracking, and management.
 """
 
-from typing import Dict, List, Optional, Callable
+from typing import Dict, List, Optional, Any, Callable
 from datetime import datetime
 import uuid
-from dataclasses import dataclass, asdict, fields
-import json
 import sqlite3
+import json
 
-from ..brokers.base_broker import BrokerInterface, Contract, Order, OrderStatus, Trade
+from unified_trading_platform.trading_core.utils import get_logger
+from ..brokers.base_broker import (
+    BrokerInterface, Contract, Order as BaseOrder, OrderType, OrderStatus,
+    OrderAction, Trade, ManagedOrder
+)
 
-@dataclass
-class ManagedOrder:
-    """Enhanced order with additional tracking information"""
-    order_id: str
-    broker_order_id: Optional[str]
-    contract: Contract
-    order: Order
-    broker_name: str
-    status: OrderStatus
-    created_at: datetime
-    updated_at: datetime
-    filled_quantity: int = 0
-    remaining_quantity: int = 0
-    avg_fill_price: float = 0.0
-    commission: float = 0.0
-    trades: List[Trade] = None
-
-    def __str__(self):
-        return ', '.join(
-            f"{f.name}={getattr(self, f.name)!r}" for f in fields(self)
-        )
-
-    def __post_init__(self):
-        if self.trades is None:
-            self.trades = []
+# Initialize logger
+logger = get_logger(__name__)
 
 class OrderManager:
     """Manages orders across multiple brokers"""
@@ -56,49 +36,59 @@ class OrderManager:
 
     def _init_database(self):
         """Initialize SQLite database for order storage"""
-        print(f"Initializing db ${self.db_path}...")
-        with sqlite3.connect(self.db_path) as conn:
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS orders (
-                    order_id TEXT PRIMARY KEY,
-                    broker_order_id TEXT,
-                    broker_name TEXT,
-                    symbol TEXT,
-                    exchange TEXT,
-                    security_type TEXT,
-                    currency TEXT,
-                    action TEXT,
-                    quantity INTEGER,
-                    order_type TEXT,
-                    limit_price REAL,
-                    stop_price REAL,
-                    time_in_force TEXT,
-                    status TEXT,
-                    filled_quantity INTEGER,
-                    remaining_quantity INTEGER,
-                    avg_fill_price REAL,
-                    commission REAL,
-                    created_at TEXT,
-                    updated_at TEXT
-                )
-            """)
-
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS trades (
-                    trade_id TEXT PRIMARY KEY,
-                    order_id TEXT,
-                    broker_order_id TEXT,
-                    execution_id TEXT,
-                    symbol TEXT,
-                    quantity INTEGER,
-                    price REAL,
-                    timestamp TEXT,
-                    side TEXT,
-                    commission REAL,
-                    FOREIGN KEY (order_id) REFERENCES orders (order_id)
-                )
-            """)
-        print("DB initialized....")
+        logger.info(f"Initializing database at {self.db_path}")
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS orders (
+                        order_id TEXT PRIMARY KEY,
+                        broker_order_id TEXT,
+                        broker_name TEXT NOT NULL,
+                        symbol TEXT NOT NULL,
+                        security_type TEXT NOT NULL,
+                        exchange TEXT,
+                        currency TEXT,
+                        action TEXT NOT NULL,
+                        order_type TEXT NOT NULL,
+                        quantity INTEGER NOT NULL,
+                        limit_price REAL,
+                        stop_price REAL,
+                        time_in_force TEXT,
+                        status TEXT NOT NULL,
+                        filled_quantity INTEGER DEFAULT 0,
+                        remaining_quantity INTEGER,
+                        avg_fill_price REAL DEFAULT 0.0,
+                        commission REAL DEFAULT 0.0,
+                        created_at TIMESTAMP NOT NULL,
+                        updated_at TIMESTAMP NOT NULL,
+                        strategy_id TEXT,
+                        parent_order_id TEXT,
+                        notes TEXT,
+                        metadata TEXT
+                    )
+                """)
+                
+                # Create trades table
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS trades (
+                        trade_id TEXT PRIMARY KEY,
+                        order_id TEXT NOT NULL,
+                        broker_trade_id TEXT,
+                        execution_id TEXT,
+                        quantity INTEGER NOT NULL,
+                        price REAL NOT NULL,
+                        commission REAL DEFAULT 0.0,
+                        realized_pnl REAL,
+                        timestamp TIMESTAMP NOT NULL,
+                        exchange TEXT,
+                        liquidity TEXT,
+                        FOREIGN KEY (order_id) REFERENCES orders (order_id)
+                    )
+                """)
+            logger.info("Database initialized successfully")
+        except Exception as e:
+            logger.error(f"Error initializing database: {e}", exc_info=True)
+            raise
 
     def add_broker(self, name: str, broker: BrokerInterface):
         """Add a broker for order management"""
@@ -108,7 +98,7 @@ class OrderManager:
         broker.register_callback('order_status', self._on_order_status)
         broker.register_callback('trade_execution', self._on_trade_execution)
 
-    def submit_order(self, contract: Contract, order: Order, broker_name: str) -> str:
+    def submit_order(self, contract: Contract, order: BaseOrder, broker_name: str) -> str:
         """Submit an order through specified broker"""
         if broker_name not in self.brokers:
             raise ValueError(f"Broker '{broker_name}' not found")
@@ -152,27 +142,37 @@ class OrderManager:
             self._trigger_callback('order_rejected', managed_order)
             raise e
 
-    def cancel_order(self, order_id: str) -> bool:
-        """Cancel an order"""
-        if order_id not in self.orders:
-            raise ValueError(f"Order '{order_id}' not found")
-
-        managed_order = self.orders[order_id]
-        broker = self.brokers[managed_order.broker_name]
-
+    def cancel_order(self, order_id: str, broker_name: Optional[str] = None) -> bool:
+        """Cancel an active order"""
         try:
-            success = broker.cancel_order(managed_order.broker_order_id)
+            logger.info(f"Cancelling order {order_id}")
+            order = self.get_order(order_id)
+            if not order:
+                logger.warning(f"Order {order_id} not found")
+                return False
 
+            if broker_name and order.broker_name != broker_name:
+                logger.warning(f"Order {order_id} is not managed by broker {broker_name}")
+                return False
+
+            broker = self.brokers.get(order.broker_name)
+            if not broker:
+                logger.error(f"Broker {order.broker_name} not found for order {order_id}")
+                return False
+
+            success = broker.cancel_order(order.broker_order_id or order_id)
             if success:
-                managed_order.status = OrderStatus.CANCELLED
-                managed_order.updated_at = datetime.now()
-                self._save_order(managed_order)
-                self._trigger_callback('order_cancelled', managed_order)
+                order.status = OrderStatus.CANCELLED
+                order.updated_at = datetime.now()
+                self._update_order_status(order)
+                logger.info(f"Successfully cancelled order {order_id}")
+            else:
+                logger.warning(f"Failed to cancel order {order_id}")
 
             return success
 
         except Exception as e:
-            print(f"Error cancelling order {order_id}: {e}")
+            logger.error(f"Error cancelling order {order_id}: {e}", exc_info=True)
             return False
 
     def get_order(self, order_id: str) -> Optional[ManagedOrder]:
@@ -258,7 +258,7 @@ class OrderManager:
 
     def _save_order(self, order: ManagedOrder):
         """Save order to database"""
-        print(f"inserting order {order.order_id}")
+        logger.debug(f"Saving order {order.order_id} to database")
         with sqlite3.connect(self.db_path) as conn:
             conn.execute("""
                 INSERT OR REPLACE INTO orders 
@@ -298,7 +298,7 @@ class OrderManager:
         with sqlite3.connect(self.db_path) as conn:
             conn.execute("""
                 INSERT OR REPLACE INTO trades 
-                (trade_id, order_id, broker_order_id, execution_id, symbol, 
+                (trade_id, order_id, broker_trade_id, execution_id, symbol, 
                  quantity, price, timestamp, side, commission)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
@@ -314,13 +314,18 @@ class OrderManager:
                 trade.commission
             ))
 
-    def _trigger_callback(self, event_type: str, *args, **kwargs):
-        """Trigger callbacks for an event"""
-        for callback in self.callbacks.get(event_type, []):
+    def _trigger_callbacks(self, event_type: str, *args, **kwargs):
+        """Trigger all callbacks for an event"""
+        callbacks = self.callbacks.get(event_type, [])
+        if not callbacks:
+            return
+            
+        logger.debug(f"Triggering {len(callbacks)} callbacks for event: {event_type}")
+        for callback in callbacks:
             try:
                 callback(*args, **kwargs)
             except Exception as e:
-                print(f"Error in {event_type} callback: {e}")
+                logger.error(f"Error in {event_type} callback: {e}", exc_info=True)
 
     def get_order_history(self, symbol: Optional[str] = None,
                          start_date: Optional[datetime] = None,

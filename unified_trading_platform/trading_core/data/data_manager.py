@@ -10,7 +10,11 @@ from dataclasses import asdict
 import sqlite3
 import json
 
+from unified_trading_platform.trading_core.utils import get_logger
 from unified_trading_platform.trading_core.brokers.base_broker import BrokerInterface, Contract, BarData, TickData
+
+# Initialize logger
+logger = get_logger(__name__)
 
 class DataManager:
     """Manages market data storage and retrieval"""
@@ -91,6 +95,11 @@ class DataManager:
 
         return df
 
+    def get_option_chain(self, broker_name: Optional[str] = None, contract: Contract = None) -> pd.DataFrame:
+        broker = self._get_broker(broker_name)
+        option_chain = broker.get_option_chain(contract)
+        return option_chain
+
     def _cache_bars(self, df: pd.DataFrame):
         with sqlite3.connect(self.db_path) as conn:
             df.to_sql('historical_bars', conn, if_exists='append', index=True, index_label="timestamp")
@@ -147,7 +156,7 @@ class DataManager:
             # Forward to user's callback
             callback(tick_data)
         # Use broker to subscribe
-        print("subscribing to market data for") #, json.dumps(asdict(contract)))
+        logger.info(f"Subscribing to market data for {asdict(contract)}")
         return broker.subscribe_market_data(contract, storage_and_user_callback)
 
     def _store_tick_data(self, tick_data):

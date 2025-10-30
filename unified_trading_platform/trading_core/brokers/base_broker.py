@@ -9,6 +9,11 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 
+from unified_trading_platform.trading_core.utils import get_logger
+
+# Initialize logger
+logger = get_logger(__name__)
+
 class OrderType(Enum):
     MARKET = "MKT"
     LIMIT = "LMT"
@@ -127,6 +132,25 @@ class BarData:
     volume: int
 
 @dataclass
+class ManagedOrder:
+    """Enhanced order with additional tracking information"""
+    order_id: str
+    broker_order_id: Optional[str]
+    contract: 'Contract'
+    order: 'Order'
+    broker_name: str
+    status: 'OrderStatus'
+    created_at: datetime
+    updated_at: datetime = field(default_factory=datetime.now)
+    filled_quantity: int = 0
+    remaining_quantity: int = 0
+    avg_fill_price: Optional[float] = None
+    parent_id: Optional[str] = None
+    client_id: Optional[str] = None
+    tags: Dict[str, Any] = field(default_factory=dict)
+    notes: Optional[str] = None
+
+@dataclass
 class TickData:
     """Enhanced real-time tick data with comprehensive market data support"""
     timestamp: datetime
@@ -190,6 +214,8 @@ class OptionChain:
     """Represents option chain data for a given underlying"""
     underlying_symbol: str
     underlying_contract: Contract
+    tick_size: int
+    trading_class: str
     expiration_dates: List[str]
     strikes: List[float]
     options: List[Contract]  # List of option contracts
@@ -217,7 +243,7 @@ class BrokerInterface(ABC):
     @abstractmethod
     def connect(self, **kwargs) -> bool:
         """Establish connection to broker"""
-        print("here at base_broker ...")
+        logger.debug("Base broker connect method called")
         pass
 
     @abstractmethod
@@ -314,4 +340,4 @@ class BrokerInterface(ABC):
                 try:
                     callback(*args, **kwargs)
                 except Exception as e:
-                    print(f"Error in callback {callback.__name__}: {e}")
+                    logger.error(f"Error in callback {callback.__name__}: {e}", exc_info=True)
