@@ -76,7 +76,6 @@ def create_run_config(db_path: str, venue: str, strategy_name: str,
             json.dumps(initial_portfolio or {}), "INITIAL", exit_time,
             timestamp, timestamp
         ))
-    
     return run_id
 
 def update_run_status(db_path: str, run_id: str, status: str, error_message: Optional[str] = None):

@@ -73,7 +73,7 @@ class StrategyManager:
         self.is_running = False
         self.is_initialized = False
         self.tick_queue = queue.Queue()
-        self.order_queue = queue.Queue()  # For pending orders
+        self.order_tracker: Dict[str, dict] = {}  # order_id -> order_info for O(1) lookups
         self.current_portfolio: Dict = {}
         self.initial_portfolio: Dict = {}
         
@@ -86,18 +86,6 @@ class StrategyManager:
 
         # Initialize database tables
         init_strategy_tables(db_path)
-
-    def on_order_filled(self, order):
-        """Callback for when an order is filled"""
-        logger.info(f"Order filled: {order.contract.symbol} - {order.filled_quantity} shares")
-
-    def on_trade_executed(self, trade):
-        """Callback for trade execution"""
-        logger.info(f"Trade executed: {trade.contract.symbol} - {trade.quantity} @ ${trade.price}")
-
-    def on_market_data(self, tick_data):
-        """Callback for market data updates"""
-        logger.debug(f"Market data update - {tick_data.symbol}: Bid={tick_data.bid}, Ask={tick_data.ask}, Last={tick_data.last}")
 
     def initialize(self) -> bool:
         """Initialize the strategy manager"""
@@ -133,7 +121,7 @@ class StrategyManager:
             # trading_system.register_order_callback('trade_executed', self.on_trade_executed)
 
             # Get initial portfolio from broker
-            # self.initial_portfolio = self._get_initial_portfolio()
+            self.initial_portfolio = self._get_initial_portfolio()
 
             # Update run config with initial portfolio
             self._update_run_config_initial_portfolio()
@@ -149,7 +137,7 @@ class StrategyManager:
             )
 
             self.is_initialized = True
-            # update_run_status(self.db_path, self.run_id, "INITIAL")
+            #update_run_status(self.db_path, self.run_id, "INITIAL")
 
             return True
 
@@ -232,6 +220,7 @@ class StrategyManager:
             try:
                 tick_data = self.tick_queue.get(timeout=1.0)
                 self._process_tick(tick_data)
+                self._should_exit() ## check if this stop criteria is met
             except queue.Empty:
                 continue
             except Exception as e:
@@ -282,7 +271,7 @@ class StrategyManager:
                 self._execute_order_signal(signal)
 
             # Update portfolio and PnL
-            self._update_portfolio_and_pnl()
+            #self._update_portfolio_and_pnl()
 
         except Exception as e:
             logger.error(f"Error processing tick: {e}", exc_info=True)
@@ -302,10 +291,12 @@ class StrategyManager:
             # Submit order
             order_id = self.trading_system.order_manager.submit_order(signal.contract, order, self.venue)
 
-            # Add to order queue for tracking
-            self.order_queue.put(
-                {"order_id": order_id, "signal": signal, "timestamp": datetime.now()}
-            )
+            # Add to order tracker for O(1) lookups
+            self.order_tracker[order_id] = {
+                "signal": signal,
+                "timestamp": datetime.now(),
+                "status": "pending"
+            }
         except Exception as e:
             logger.error(f"Error executing order signal: {e}", exc_info=True)
             self._handle_error(e)
@@ -325,6 +316,9 @@ class StrategyManager:
                 }
                 self.strategy_engine.update_position_on_fill(signal.leg_id, fill_info)
 
+            # Update order tracker
+            self.order_tracker[order.order_id]["status"] = "filled"
+
             # Update portfolio
             self._update_portfolio_and_pnl()
 
@@ -337,32 +331,33 @@ class StrategyManager:
         logger.warning(f"Order rejected: {order.order_id}")
         # Could implement retry logic here
 
-    def _process_historical_data(self, historical_data: pd.DataFrame):
+    def _process_historical_data(self, historical_data: List[TickData]):
         """Process historical data for backtesting"""
-        for timestamp, row in historical_data.iterrows():
+        for tick in historical_data:
             if self._stop_event.is_set():
                 break
 
             # Create tick data from historical row
             tick_data = TickData(
-                timestamp=timestamp,
-                exchange="NSE",
-                security_type="CASH",
-                symbol="NIFTY",
-                currency="INR",
-                last=row.get("close"),
-                bid=row.get("close"),
-                ask=row.get("close"),
+                timestamp=tick.timestamp,
+                exchange=tick.exchange,
+                security_type=tick.security_type,
+                symbol=tick.symbol,
+                currency=tick.currency,
+                last=tick.last,
+                bid=tick.bid,
+                ask=tick.ask,
+                open=tick.open,
+                high=tick.high,
+                low=tick.low,
+                volume=tick.volume,
+                open_interest=tick.open_interest,
+                vwap=tick.vwap,
             )
-
             # Process the tick
             self._process_tick(tick_data)
 
-            # Check exit conditions
-            if self._should_exit():
-                break
-
-    def _get_historical_data(self) -> pd.DataFrame:
+    def _get_historical_data(self) -> List[TickData]:
         """Get historical data for backtesting"""
         # Create contract for underlying
         contract = self._create_underlying_contract()
@@ -459,8 +454,11 @@ class StrategyManager:
             logger.error(f"Error updating portfolio and PnL: {e}", exc_info=True)
 
     def _find_signal_for_order(self, order_id: str) -> Optional[OrderSignal]:
-        """Find the signal that corresponds to an order"""
-        # This would search through the order queue to find the matching signal
+        """Find the signal that corresponds to an order
+        """
+        order_info = self.order_tracker.get(order_id)
+        if order_info:
+            return order_info["signal"]
         return None
 
     def _should_exit(self) -> bool:

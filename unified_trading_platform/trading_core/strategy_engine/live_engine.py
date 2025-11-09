@@ -143,7 +143,7 @@ class UnifiedStrategyEngine:
         
         if not option_chain is not None:
             return signals  # Need option chain for entry
-        
+
         for leg in self.live_legs:
             if leg.entry_ts is not None:
                 continue  # Already entered
@@ -201,6 +201,10 @@ class UnifiedStrategyEngine:
             should_exit = False
             exit_reason = None
             
+            if _hist_eod_ts(): ## fixme: implement this methd
+                should_exit = True
+                exit_reason = "EOD"
+                leg.hit_target = True
             if _hit_target(rc.target, leg.spec.position, leg.entry_px, leg.entry_S, current_price, underlying_price):
                 should_exit = True
                 exit_reason = "TARGET"
