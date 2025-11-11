@@ -17,6 +17,7 @@ websockets
 # API Gateway
 fastapi>=0.110.0
 uvicorn>=0.22.0
+pyyaml>=6.0
 # Development dependencies (optional)
 pytest>=6.0.0      # For testing
 jupyter>=1.0.0     # For notebooks

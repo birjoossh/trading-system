@@ -139,20 +139,20 @@ class LiveLeg:
         self.spec = spec
         self.strike = strike
         self.qty = qty
-        self.entry_ts = self.exit_ts = None
-        self.entry_px = self.exit_px = None
-        self.entry_S = None
-        self.best_fav_px = None
-        self.pnl = 0.0
-        self.hit_sl = False
-        self.hit_target = False
-        self.hit_trail = False
-        self.exit_reason = None
-        self.reentry_id = 0
-        self.expiry_date = None
+        self.entry_ts = self.exit_ts = None ## entry/exit timestamps
+        self.entry_px = self.exit_px = None ## entry/exit prices
+        self.entry_S = None                 ## entry underlying price
+        self.best_fav_px = None             ## best favorite price
+        self.pnl = 0.0                      ## profit/loss
+        self.hit_sl = False                 ## hit stop loss
+        self.hit_target = False             ## hit target
+        self.hit_trail = False              ## hit trail
+        self.exit_reason = None             ## exit reason
+        self.reentry_id = 0                 ## re-entry id
+        self.expiry_date = None             ## expiry date
         # re-entry counters
-        self.re_sl_count = 0
-        self.re_tgt_count = 0
+        self.re_sl_count = 0                ## re-entry stop loss count
+        self.re_tgt_count = 0               ## re-entry target count
 
 
 def _is_short(position: str) -> bool:

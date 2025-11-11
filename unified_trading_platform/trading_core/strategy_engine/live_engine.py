@@ -32,6 +32,7 @@ class OrderSignal:
     leg_id: Optional[int] = None
     parent_leg_id: Optional[int] = None  # For re-entries
     comment: str = ""  # Optional comment about the signal
+    signal_timestamp: Optional[datetime] = None
 
 # Re-export from engine.py for compatibility
 from .engine import (
@@ -66,8 +67,6 @@ class UnifiedStrategyEngine:
     
     def _initialize_legs(self):
         """Initialize strategy legs for the current date"""
-        self.live_legs = []
-        
         for i, leg_spec in enumerate(self.config.legs, 1):
             # Resolve expiry date
             exp_date = resolve_expiry_keyword(self.current_date, leg_spec.expiry)
@@ -144,7 +143,7 @@ class UnifiedStrategyEngine:
         
         if not option_chain is not None:
             return signals  # Need option chain for entry
-        
+
         for leg in self.live_legs:
             if leg.entry_ts is not None:
                 continue  # Already entered
@@ -161,36 +160,15 @@ class UnifiedStrategyEngine:
                 continue
                 
             leg.strike = strike
+            leg.signal_timestamp = tick_data.timestamp
             
             signals.append(self.generate_signal_for_leg(leg))
-            # # Create order signal
-            # contract = Contract(
-            #     symbol=f"{leg.spec.option_type}{strike}",
-            #     security_type="OPT",
-            #     exchange="NSE",  # fixme: fix this
-            #     currency="INR",  # fixme: fix this
-            #     expiry=leg.expiry_date.strftime("%Y%m%d"),
-            #     strike=strike,
-            #     right=leg.spec.option_type,
-            #     multiplier=str(self.config.lot_size)
-            # )
-            
-            # action = OrderAction.BUY if leg.spec.position.lower().startswith("buy") else OrderAction.SELL
-            
-            # signal = OrderSignal(
-            #     action=action,
-            #     contract=contract,
-            #     quantity=leg.qty,
-            #     leg_id=leg.leg_id
-            # )
-            
-            # signals.append(signal)
-            
-            # # Mark as entered
-            # leg.entry_ts = tick_data.timestamp
-            # leg.entry_px = tick_data.last or tick_data.bid or tick_data.ask
-            # leg.entry_S = underlying_price
-            # leg.best_fav_px = leg.entry_px
+
+            #fixme: this is now set to the last tick price, but I think it should be from the executed order
+            leg.entry_ts = tick_data.timestamp
+            leg.entry_px = tick_data.last or tick_data.bid or tick_data.ask
+            leg.entry_S = underlying_price
+            leg.best_fav_px = leg.entry_px
         
         return signals
     
@@ -223,6 +201,10 @@ class UnifiedStrategyEngine:
             should_exit = False
             exit_reason = None
             
+            if _hist_eod_ts(): ## fixme: implement this methd
+                should_exit = True
+                exit_reason = "EOD"
+                leg.hit_target = True
             if _hit_target(rc.target, leg.spec.position, leg.entry_px, leg.entry_S, current_price, underlying_price):
                 should_exit = True
                 exit_reason = "TARGET"
@@ -240,6 +222,7 @@ class UnifiedStrategyEngine:
                 signals.append(self.generate_signal_for_leg(leg))
                 
                 # Mark as exited
+                # fixme: I think this should be from the actual executed order rather than last price specifically in forward testing or live trading
                 leg.exit_ts = tick_data.timestamp
                 leg.exit_px = current_price
                 leg.exit_reason = exit_reason
@@ -254,77 +237,56 @@ class UnifiedStrategyEngine:
         """Check pending re-entries"""
         signals = []
         new_pending = []
+
+        # fixme: should this return empty signal list or try fetching option_chain?
+        if option_chain is None:
+            return signals
         
         for pen in self.pending_reentries:
+            exp_date = resolve_expiry_keyword(self.current_date, pen.spec.expiry) 
+            strike = select_strike(option_chain, pen.spec.option_type.upper(), underlying_price, pen.spec.strike_criteria)
+            if strike is not None:
+                # Create new leg
+                new_leg = LiveLeg(
+                    leg_id=len(self.live_legs) + 1,
+                    spec=pen.spec,
+                    strike=strike,
+                    qty=int(pen.spec.qty_lots) * int(self.config.lot_size)
+                )
+                new_leg.expiry_date = exp_date
+                new_leg.entry_ts = tick_data.timestamp
+                new_leg.entry_px = tick_data.last or tick_data.bid or tick_data.ask
+                new_leg.entry_S = underlying_price
+                new_leg.best_fav_px = new_leg.entry_px
+                new_leg.parent_leg_id = pen.parent_leg_id
+                new_leg.strike = strike
+
             mode = pen.mode
-            
             if mode.startswith("RE_ASAP") or mode == "LAZY_LEG":
-                # Immediate re-entry
-                if option_chain is not None:
-                    exp_date = resolve_expiry_keyword(self.current_date, pen.spec.expiry)
-                    strike = select_strike(option_chain, pen.spec.option_type.upper(), 
-                                         underlying_price, pen.spec.strike_criteria)
-                    
-                    if strike is not None:
-                        # Create new leg
-                        new_leg = LiveLeg(
-                            leg_id=len(self.live_legs) + 1,
-                            spec=pen.spec,
-                            strike=strike,
-                            qty=int(pen.spec.qty_lots) * int(self.config.lot_size)
-                        )
-                        new_leg.expiry_date = exp_date
-                        new_leg.entry_ts = tick_data.timestamp
-                        new_leg.entry_px = tick_data.last or tick_data.bid or tick_data.ask
-                        new_leg.entry_S = underlying_price
-                        new_leg.best_fav_px = new_leg.entry_px
-                        new_leg.parent_leg_id = pen.parent_leg_id
-                        new_leg.strike = strike
-                        
-                        self.live_legs.append(new_leg)
-                        signals.append(signals.append(self.generate_signal_for_leg(new_leg)))
+                self.live_legs.append(new_leg)
+                signals.append(self.generate_signal_for_leg(new_leg))
+                continue
             
             elif mode.startswith("RE_COST"):
                 # Cost-based re-entry
-                if option_chain is not None:
-                    row = option_chain[
-                        (option_chain["OptionType"] == pen.spec.option_type.upper()) & 
-                        (option_chain["Strike"] == pen.watch_strike)
-                    ]
-                    
-                    if not row.empty:
-                        current_price = float(row["Close"].iloc[0])
-                        ok = (current_price >= pen.watch_price) if pen.spec.position == "Buy" else (current_price <= pen.watch_price)
-                        
-                        if ok:
-                            # Create new leg and signal (similar to RE_ASAP)
-                            # ... (implementation similar to above)
-                            continue
-                new_pending.append(pen)
+                current_price = tick_data.last or tick_data.bid or tick_data.ask # fixme: this should be either bid/ask depending on spec.position
+                ok = (current_price >= pen.watch_price) if pen.spec.position == "Buy" else (current_price <= pen.watch_price)
+                if ok:
+                    self.live_legs.append(new_leg)
+                    signals.append(self.generate_signal_for_leg(new_leg))
+                    continue
             
             elif mode.startswith("RE_MOMENTUM"):
                 # Momentum-based re-entry
-                if option_chain is not None and self.config.overall_momentum:
-                    pts = float(self.config.overall_momentum.get("points", 0.0))
-                    if pts > 0:
-                        exp_date = resolve_expiry_keyword(self.current_date, pen.spec.expiry)
-                        strike = select_strike(option_chain, pen.spec.option_type.upper(), 
-                                             underlying_price, pen.spec.strike_criteria)
-                        
-                        if strike is not None:
-                            row = option_chain[
-                                (option_chain["OptionType"] == pen.spec.option_type.upper()) & 
-                                (option_chain["Strike"] == strike)
-                            ]
-                            
-                            if not row.empty:
-                                current_price = float(row["Close"].iloc[0])
-                                if current_price >= (pen.watch_price + pts):
-                                    # Create new leg and signal
-                                    # ... (implementation similar to above)
-                                    continue
+                pts = float(self.config.overall_momentum.get("points", 0.0))
+                if pts > 0:
+                    current_price = tick_data.last or tick_data.bid or tick_data.ask # fixme: this should be either bid/ask depending on spec.position
+                    if current_price >= (pen.watch_price + pts): # fixme: the condition should be based on long/short
+                        self.live_legs.append(new_leg)
+                        signals.append(self.generate_signal_for_leg(new_leg))
+                        continue
+            else:
                 new_pending.append(pen)
-        
         self.pending_reentries = new_pending
         return signals
     
