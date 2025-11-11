@@ -4,6 +4,8 @@ from typing import Dict, List, Optional
 import json
 from pathlib import Path
 
+from requests import get
+
 
 # ---------------------------
 # Strike selection spec
@@ -85,6 +87,14 @@ class LegSpec:
     risk: RiskConfig = dc.field(default_factory=RiskConfig)
     reentry_on_sl: ReEntryRule = dc.field(default_factory=ReEntryRule)
     reentry_on_target: ReEntryRule = dc.field(default_factory=ReEntryRule)
+    rbo_toggle: bool = False
+    rbo_start_time: str = None
+    rbo_end_time: str =  None
+    rbo_symbol: str = "Underlying"
+    rbo_entry_when: str = None
+    rbo_comp_operator: str = 0
+    rbo_allowed_range: float = 0
+    rbo_range_validator_mode: str = "pts"
 
 
 @dc.dataclass
@@ -191,6 +201,14 @@ def load_strategy_config(
             risk=risk_config,
             reentry_on_sl=reentry_sl,
             reentry_on_target=reentry_target,
+            rbo_toggle = leg_dict.get('rbo_toggle',False),
+            rbo_start_time= leg_dict.get('rbo_start_time', None),
+            rbo_end_time= leg_dict.get('rbo_end_time', None),
+            rbo_symbol = leg_dict.get('rbo_symbol','Underlying'),
+            rbo_entry_when = leg_dict.get('rbo_entry_when',None),
+            rbo_comp_operator= leg_dict.get('rbo_comp_operator',0),
+            rbo_allowed_range= leg_dict.get('rbo_allowed_range',0),
+            rbo_range_validator_mode = leg_dict.get('rbo_range_validator_mode', None)
         )
         legs.append(leg_spec)
 
