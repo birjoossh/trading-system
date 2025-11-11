@@ -4,7 +4,6 @@ Corrected options market data test with valid contracts and tick types
 This addresses the issues found in the previous test.
 """
 
-import imp
 from re import L
 import time
 from pprint import pprint
