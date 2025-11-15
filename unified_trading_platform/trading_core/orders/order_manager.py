@@ -130,7 +130,7 @@ class OrderManager:
             self._save_order(managed_order)
 
             # Trigger callbacks
-            self._trigger_callback('order_submitted', managed_order)
+            self._trigger_callbacks('order_submitted', managed_order)
 
             return order_id
 
@@ -139,7 +139,7 @@ class OrderManager:
             self.orders[order_id] = managed_order
             self._save_order(managed_order)
 
-            self._trigger_callback('order_rejected', managed_order)
+            self._trigger_callbacks('order_rejected', managed_order)
             raise e
 
     def cancel_order(self, order_id: str, broker_name: Optional[str] = None) -> bool:
@@ -162,15 +162,10 @@ class OrderManager:
 
             success = broker.cancel_order(order.broker_order_id or order_id)
             if success:
-                order.status = OrderStatus.CANCELLED
-                order.updated_at = datetime.now()
-                self._update_order_status(order)
-                logger.info(f"Successfully cancelled order {order_id}")
+                logger.info(f"Successfully submitted cancel order {order_id}")
             else:
-                logger.warning(f"Failed to cancel order {order_id}")
-
+                logger.warning(f"Failed to submit cancel order {order_id}")
             return success
-
         except Exception as e:
             logger.error(f"Error cancelling order {order_id}: {e}", exc_info=True)
             return False
@@ -238,9 +233,9 @@ class OrderManager:
         # Trigger appropriate callback
         if old_status != managed_order.status:
             if managed_order.status == OrderStatus.FILLED:
-                self._trigger_callback('order_filled', managed_order)
+                self._trigger_callbacks('order_filled', managed_order)
             elif managed_order.status == OrderStatus.CANCELLED:
-                self._trigger_callback('order_cancelled', managed_order)
+                self._trigger_callbacks('order_cancelled', managed_order)
 
     def _on_trade_execution(self, trade: Trade):
         """Handle trade execution from broker"""
@@ -254,7 +249,7 @@ class OrderManager:
         if managed_order:
             managed_order.trades.append(trade)
             self._save_trade(trade, managed_order.order_id)
-            self._trigger_callback('trade_executed', trade)
+            self._trigger_callbacks('trade_executed', trade)
 
     def _save_order(self, order: ManagedOrder):
         """Save order to database"""

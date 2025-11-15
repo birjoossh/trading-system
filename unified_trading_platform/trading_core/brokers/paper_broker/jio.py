@@ -13,6 +13,7 @@ class JioH5Adapter:
         self.h5_path = h5_path
         with pd.HDFStore(h5_path, mode="r") as store:
             self.keys = list(store.keys())
+            print("all keys - ", self.keys)
 
     def _read_tick(self) -> pd.DataFrame:
         with pd.HDFStore(self.h5_path, mode="r") as store:
@@ -134,26 +135,38 @@ class JioH5Adapter:
         }).dropna()
         return ohlc
     
-    def hist_ohlc(self,ticker:str = None, strike:int = None, opt_type:str = None, expiry:str = None, bar_length:str = '1min') -> pd.DataFrame:
+    def hist_ohlc(self, ticker:str = None, exchange:str = None, strike:int = None, opt_type:str = None, expiry:str = None, bar_length:str = '1min') -> pd.DataFrame:
         df = self._read_tick()
+
+        df["exchange"] = "NSE" #fixme: this should be configurable
+
         if "tsym" not in df.columns:
             raise ValueError("tick_data lacks trading symbol column")
         if ticker != None:
             base = df[df["tsym"] == ticker].copy()
-        else:
-            expiry = pd.to_datetime(expiry,format='mixed').date()
-            base = df[df['strike'] == stirke) && (df['type'] == opt_type) && (df['expiry'] == expiry)].copy()
+        
+        if exchange != None:
+            base = df[df["exchange"] == exchange].copy()
+        
+        # else:
+        #     expiry = pd.to_datetime(expiry,format='mixed').date()
+        #     base = df[(df['strike'] == strike) and (df['type'] == opt_type) and (df['expiry'] == expiry)].copy()
         if base.empty:
-            raise ValueError(f'tick data lacks data for {ticker} ticker')
+            return pd.DataFrame()
 
         ohlc = base['price'].resample(bar_length).agg({
             "open":  "first",
             "high":  "max",
             "low":   "min",
-            "close": "last"
+            "close": "last",
+            "volume": "sum"
         }).dropna()
+
         ohlc['Contract'] = ticker
         ## To Do; may need to add volumne and OI
+        
+        ohlc = ohlc.reset_index()
+        ohlc.rename(columns={'index': 'timestamp'}, inplace=True)
         return ohlc
     
     def tick_df(self, ticker:str = None, strike:int = None, opt_type:str = None, expiry:str = None) -> pd.DataFrame:
@@ -162,7 +175,7 @@ class JioH5Adapter:
             base = df[df["tsym"] == ticker].copy()
         else:
             expiry = pd.to_datetime(expiry,format='mixed').date()
-            base = df[df['strike'] == stirke) && (df['type'] == opt_type) && (df['expiry'] == expiry)].copy()
+            base = df[(df['strike'] == stirke) and (df['type'] == opt_type) and (df['expiry'] == expiry)].copy()
         if base.empty:
             raise ValueError(f'tick data lacks data for {ticker} ticker')
         

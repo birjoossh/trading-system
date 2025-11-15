@@ -74,7 +74,7 @@ class TradingSystem:
 
     def get_historical_data(self, symbol: str, exchange: str,
                           security_type: str = "STK", currency: str = "USD",
-                          duration: str = "1 D", bar_size: str = "1 hour",
+                          duration: str = "1 D", bar_size: str = "1H",
                           broker_name: Optional[str] = None) -> pd.DataFrame:
         """Get historical data for a symbol"""
         contract = Contract(
@@ -85,7 +85,7 @@ class TradingSystem:
         )
 
         return self.data_manager.get_historical_data(
-            contract, duration, bar_size, broker_name
+            contract, duration, bar_size, broker_name, False
         )
 
     def subscribe_market_data(self, symbol: str, exchange: str,

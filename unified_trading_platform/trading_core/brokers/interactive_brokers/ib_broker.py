@@ -467,7 +467,9 @@ class IBBroker(BrokerInterface):
             }
             logger.debug(f"underlying conId = {underlying_contract.conId if hasattr(underlying_contract, 'conId') else 0}")
             # Request option chain
-            self.client.reqSecDefOptParams(req_id, underlying_contract.symbol, underlying_contract.exchange, underlying_contract.security_type.value, underlying_contract.conId if hasattr(underlying_contract, 'conId') else 0)
+            self.client.reqSecDefOptParams(req_id, underlying_contract.symbol, underlying_contract.exchange, \
+                    underlying_contract.security_type.value, underlying_contract.conId \
+                        if hasattr(underlying_contract, 'conId') else 0)
 
             # Wait for response till timeout
             if not response_received.wait(timeout=20):

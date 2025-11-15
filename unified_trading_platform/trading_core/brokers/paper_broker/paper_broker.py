@@ -14,28 +14,30 @@ from collections import defaultdict
 import threading
 import time
 import sqlite3
+from pathlib import Path
+from unified_trading_platform.trading_core.utils.utils import fromYYMMDD
 
 from click import option
 import pandas as pd
 
-from .base_broker import (
+from ..base_broker import (
     BrokerInterface,
     Contract,
     Order,
     BarData,
     TickData,
     SecurityType,
-    OptionChain
+    OptionChain,
+    OrderStatus
 )
 
 from .jio import JioH5Adapter
 
 @dataclass
 class PaperBrokerConfig:
-    mode: str  # 'csv' or 'db'
-    csv_path: Optional[str] = None
-    db_path: Optional[str] = None
-    h5_path: Optional[str] = None
+    csv_path: Optional[Path] = None
+    db_path: Optional[Path] = None
+    h5_path: Optional[Path] = None
     emit_interval_s: float = 0.5
 
 
@@ -50,11 +52,13 @@ class PaperBroker(BrokerInterface):
     def __init__(self, **kwargs):
         super().__init__()
         self.config = PaperBrokerConfig(
-            mode=kwargs.get("mode", "csv"),
-            csv_path=kwargs.get("csv_path"),
-            db_path=kwargs.get("db_path"),
+            csv_path=Path(kwargs.get("csv_path")) if kwargs.get("csv_path") else None,
+            db_path=Path(kwargs.get("db_path")) if kwargs.get("db_path") else None,
+            h5_path=Path(kwargs.get("h5_path")) if kwargs.get("h5_path") else None,
+
             emit_interval_s=kwargs.get("emit_interval_s", 0.5),
         )
+        self.mode="csv" if self.config.csv_path else "db" if self.config.db_path else "h5"
         self._md_threads: Dict[tuple, threading.Thread] = {}
         self._md_stops: Dict[tuple, threading.Event] = {}
         self._orders: Dict[str, Dict[str, Any]] = {}
@@ -71,11 +75,84 @@ class PaperBroker(BrokerInterface):
         self.is_connected = False
         return True
 
+    # ---- Option Chain ----
+    def get_option_chain(self, contract: Contract):
+        # format date
+        expiry_date = pd.to_datetime(contract.expiry).date()
+
+        df = JioH5Adapter(self.config.h5_path)
+        option_chain = df.options_table()
+        
+        if not option_chain.empty:
+            strikes = option_chain['Strike'].unique()
+            expiration_dates = option_chain['Expiry'].unique()
+            option_types = option_chain['OptionType'].unique()
+            
+            # More efficient: nested defaultdict
+            ltp = defaultdict(lambda: defaultdict(dict))
+            
+            # Filter once for the contract expiry
+            filtered_chain = option_chain[option_chain['Expiry'] == expiry_date] 
+
+            # Iterate through filtered data
+            for idx, row in filtered_chain.iterrows():
+                timestamp = idx
+                op_type = row['OptionType']
+                strike = row['Strike']
+                price = row['Close']
+                
+                # Automatically creates nested structure
+                ltp[timestamp][op_type][strike] = price
+            
+            # Convert to regular dict (optional)
+            ltp = {ts: {ot: dict(strikes) for ot, strikes in types.items()} 
+                for ts, types in ltp.items()}
+            
+            oc = OptionChain(
+                underlying_symbol=contract.symbol,
+                strikes=strikes,
+                expiration_dates=expiration_dates,
+                type=option_types,
+                ltp=ltp,
+                underlying_contract=contract,
+                tick_size=None, # fixme: where to find this?
+                trading_class=contract.trading_class,
+                options=option_chain
+            )
+        for ts in ltp.keys():
+            call_oc = OptionChain(
+                underlying_symbol=contract.symbol,
+                strikes= list(ltp[ts]['CE'].keys()),
+                expiration_dates=expiration_dates,
+                type=option_types,
+                ltp = ltp[ts]['CE'],
+                underlying_contract=contract,
+                tick_size=None, # fixme: where to find this?
+                trading_class=contract.trading_class,
+                options=option_chain
+            )
+
+            put_oc = OptionChain(
+                underlying_symbol=contract.symbol,
+                strikes= list(ltp[ts]['PE'].keys()),
+                expiration_dates=expiration_dates,
+                type=option_types,
+                ltp = ltp[ts]['PE'],
+                underlying_contract=contract,
+                tick_size=None, # fixme: where to find this?
+                trading_class=contract.trading_class,
+                options=option_chain
+            )
+            return call_oc, put_oc
+            #callback(call_oc)
+            #callback(put_oc)
+
     # ---- Market Data ----
     def get_historical_data(self, contract: Contract, duration: str,
                           bar_size: str, what_to_show: str = "TRADES") -> List[BarData]:
+        print("Fetching historica data", contract)
         df = df = pd.DataFrame()
-        if self.config.mode == "csv":
+        if self.mode == "csv":
             if not self.config.csv_path:
                 return []
             df = pd.read_csv(self.config.csv_path)
@@ -83,10 +160,10 @@ class PaperBroker(BrokerInterface):
             df = df[(df["symbol"] == contract.symbol) & (df["exchange"] == contract.exchange)]
             df = df.sort_values("timestamp")
             # Filter by duration ending at last available timestamp
-        elif self.config.mode == 'h5':
-            tick_data = JioH5Adapter(self.config.h5_path)
-            df = tick_data.hist_ohlc(ticker=contract.symbol,opt_type=contract.strike,
-                                        opt_type=contract.right,expiry=contract.expiry ,bar_length= bar_size)
+        elif self.mode == 'h5':
+            ja = JioH5Adapter(self.config.h5_path)
+            df = ja.hist_ohlc(ticker=contract.symbol, exchange = contract.exchange, strike=contract.strike, \
+                opt_type=contract.right, expiry=contract.expiry, bar_length=bar_size)
 
         if not df.empty:
             end_dt = df["timestamp"].iloc[-1]
@@ -103,15 +180,14 @@ class PaperBroker(BrokerInterface):
             df = df[df["timestamp"] >= start_dt]
             bars: List[BarData] = []
             for _, row in df.iterrows():
-                if {"open", "high", "low", "close", "volume"}.issubset(row.index):
-                    bars.append(BarData(
-                        timestamp=row["timestamp"],
-                        open=float(row["open"]),
-                        high=float(row["high"]),
-                        low=float(row["low"]),
-                        close=float(row["close"]),
-                        volume=int(row["volume"]) if pd.notna(row["volume"]) else 0,
-                    ))
+                bars.append(BarData(
+                    timestamp=row["timestamp"],
+                    open=float(row["open"]),
+                    high=float(row["high"]),
+                    low=float(row["low"]),
+                    close=float(row["close"]),
+                    volume=int(row["volume"]) if pd.notna(row["volume"]) else 0,
+                ))
             return bars
         
         # DB mode
@@ -153,6 +229,8 @@ class PaperBroker(BrokerInterface):
         self._md_stops[key] = stop
 
         def run_csv():
+            print("Fetching market data for", contract)
+            print("self.config.csv_path = ", self.config.csv_path)
             if self.config.csv_path != None:
                 df = pd.read_csv(self.config.csv_path)  # type: ignore[arg-type]
                 df["timestamp"] = pd.to_datetime(df["timestamp"])
@@ -161,6 +239,7 @@ class PaperBroker(BrokerInterface):
             else:
                 tick_data = JioH5Adapter(self.config.h5_path)
                 df = tick_data.tick_df(contract.symbol, contract.strike, contract.right, contract.expiry)
+                print("df = ", df)
                 
             for _, row in df.iterrows():
                 if stop.is_set():
@@ -212,7 +291,7 @@ class PaperBroker(BrokerInterface):
 
         def run():
             try:
-                if self.config.mode == "csv" or self.config.mode == 'h5':
+                if self.mode == "csv" or self.mode == 'h5':
                     run_csv()
                 else:
                     run_db()
@@ -242,12 +321,14 @@ class PaperBroker(BrokerInterface):
             "status": "Submitted",
             "created_at": datetime.now(),
         }
-        # Immediate simulated fill callback could be added here
+        #delayed status update to trigger order status update callback
+        self._update_order_status(order_id, OrderStatus.FILLED, 1)
         return order_id
 
     def cancel_order(self, order_id: str) -> bool:
         if order_id in self._orders:
-            self._orders[order_id]["status"] = "Cancelled"
+            #delayed status update to trigger order status update callback
+            self._update_order_status(order_id, OrderStatus.CANCELLED, 1)
             return True
         return False
 
@@ -264,57 +345,34 @@ class PaperBroker(BrokerInterface):
     def get_account_info(self) -> Dict[str, Any]:
         return {"account": "PAPER", "cash": 1_000_000}
 
-    def get_option_chain(self, contract: Contract, callback: Callable):
-        df = JioH5Adapter(self.config.h5_path)
-        option_chain = df.options_table()
-        
-        if not option_chain.empty:
-            strikes = option_chain['Strike'].unique()
-            expiration_dates = option_chain['Expiry'].unique()
-            option_types = option_chain['OptionType'].unique()
-            
-            # More efficient: nested defaultdict
-            ltp = defaultdict(lambda: defaultdict(dict))
-            
-            # Filter once for the contract expiry
-            filtered_chain = option_chain[option_chain['Expiry'] == contract.expiry]
-            
-            # Iterate through filtered data
-            for idx, row in filtered_chain.iterrows():
-                timestamp = idx
-                op_type = row['OptionType']
-                strike = row['Strike']
-                price = row['Close']
-                
-                # Automatically creates nested structure
-                ltp[timestamp][op_type][strike] = price
-            
-            # Convert to regular dict (optional)
-            ltp = {ts: {ot: dict(strikes) for ot, strikes in types.items()} 
-                for ts, types in ltp.items()}
-            
-            oc = OptionChain(
-                underlying_symbol=contract.symbol,
-                strikes=strikes,
-                expiration_dates=expiration_dates,
-                types=option_types,
-                ltp=ltp
-            )
-        for ts in ltp.keys():
-            call_oc = OptionChain(
-                underlying_symbol=contract.symbol,
-                strikes= list(ltp[ts]['CE'].keys()),
-                expiration_dates=expiration_dates,
-                types=option_types,
-                ltp = ltp[ts]['CE']
-            )
+    def get_contract_details(self, contract: Contract) -> Dict[str, Any]:
+        raise NotImplementedError
 
-            put_oc = OptionChain(
-                underlying_symbol=contract.symbol,
-                strikes= list(ltp[ts]['PE'].keys()),
-                expiration_dates=expiration_dates,
-                types=option_types,
-                ltp = ltp[ts]['PE']
-            )
-            callback(call_oc)
-            callback(put_oc)
+    def get_greeks(self, contract: Contract) -> Dict[str, Any]:
+        raise NotImplementedError
+        
+    def get_market_data_subscriptions(self) -> List[str]:
+        raise NotImplementedError
+    
+    def set_market_data_type(self, market_data_type: str) -> bool:
+        raise NotImplementedError
+        
+    def _update_order_status(self, order_id: str, status: OrderStatus, delay: float = 0) -> None:
+        """Queue an order status update."""
+        def update_and_cleanup():
+            try:
+                time.sleep(delay)
+                if order_id in self._orders:
+                    self._orders[order_id].update({"status": status})
+                    self.trigger_callback("order_status", order_id, self._orders[order_id])
+            except Exception as e:
+                self.logger.error(f"Error in order status update for {order_id}: {e}")
+            finally:
+                # Ensure thread is cleaned up
+                if hasattr(threading.current_thread(), '_stop'):
+                    threading.current_thread()._stop()
+        if delay > 0:
+            thread = threading.Thread(target=update_and_cleanup, daemon=True)
+            thread.start()
+        else:
+            update_and_cleanup()

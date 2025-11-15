@@ -238,7 +238,7 @@ class DataManager:
                     tick_data.security_type.value,
                     tick_data.symbol,
                     tick_data.currency,
-                    tick_data.timestamp,
+                    tick_data.timestamp.isoformat(),
                     tick_data.bid,
                     tick_data.ask,
                     tick_data.last,

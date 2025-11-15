@@ -149,6 +149,7 @@ class ManagedOrder:
     client_id: Optional[str] = None
     tags: Dict[str, Any] = field(default_factory=dict)
     notes: Optional[str] = None
+    commission: Optional[float] = None
 
 @dataclass
 class TickData:
@@ -219,7 +220,7 @@ class OptionChain:
     expiration_dates: List[str]
     strikes: List[float]
     options: List[Contract]  # List of option contracts
-    ltp: Dict{datetime: [float]}
+    ltp: Dict[datetime, List[float]]
     type: List[str]
     last_updated: datetime = field(default_factory=datetime.now)
 
