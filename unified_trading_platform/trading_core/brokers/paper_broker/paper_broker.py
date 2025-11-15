@@ -2,16 +2,20 @@
 PaperBroker: Simulated broker that replays market data and accepts orders.
 Supports CSV and SQLite DB as data sources for historical bars and tick replay.
 """
-
+ # to do 
+ ## implement the h5 file tick processing
 from __future__ import annotations
 
+from enum import unique
 from typing import List, Dict, Any, Optional, Callable
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from collections import defaultdict
 import threading
 import time
 import sqlite3
 
+from click import option
 import pandas as pd
 
 from .base_broker import (
@@ -20,14 +24,18 @@ from .base_broker import (
     Order,
     BarData,
     TickData,
+    SecurityType,
+    OptionChain
 )
 
+from .jio import JioH5Adapter
 
 @dataclass
 class PaperBrokerConfig:
     mode: str  # 'csv' or 'db'
     csv_path: Optional[str] = None
     db_path: Optional[str] = None
+    h5_path: Optional[str] = None
     emit_interval_s: float = 0.5
 
 
@@ -66,6 +74,7 @@ class PaperBroker(BrokerInterface):
     # ---- Market Data ----
     def get_historical_data(self, contract: Contract, duration: str,
                           bar_size: str, what_to_show: str = "TRADES") -> List[BarData]:
+        df = df = pd.DataFrame()
         if self.config.mode == "csv":
             if not self.config.csv_path:
                 return []
@@ -74,19 +83,24 @@ class PaperBroker(BrokerInterface):
             df = df[(df["symbol"] == contract.symbol) & (df["exchange"] == contract.exchange)]
             df = df.sort_values("timestamp")
             # Filter by duration ending at last available timestamp
-            if not df.empty:
-                end_dt = df["timestamp"].iloc[-1]
-                num, unit = duration.split()
-                num = int(num)
-                if unit.upper().startswith("D"):
-                    start_dt = end_dt - timedelta(days=num)
-                elif unit.upper().startswith("M"):
-                    start_dt = end_dt - timedelta(days=num * 30)
-                elif unit.upper().startswith("W"):
-                    start_dt = end_dt - timedelta(weeks=num)
-                else:
-                    start_dt = end_dt - timedelta(days=30)
-                df = df[df["timestamp"] >= start_dt]
+        elif self.config.mode == 'h5':
+            tick_data = JioH5Adapter(self.config.h5_path)
+            df = tick_data.hist_ohlc(ticker=contract.symbol,opt_type=contract.strike,
+                                        opt_type=contract.right,expiry=contract.expiry ,bar_length= bar_size)
+
+        if not df.empty:
+            end_dt = df["timestamp"].iloc[-1]
+            num, unit = duration.split()
+            num = int(num)
+            if unit.upper().startswith("D"):
+                start_dt = end_dt - timedelta(days=num)
+            elif unit.upper().startswith("M"):
+                start_dt = end_dt - timedelta(days=num * 30)
+            elif unit.upper().startswith("W"):
+                start_dt = end_dt - timedelta(weeks=num)
+            else:
+                start_dt = end_dt - timedelta(days=30)
+            df = df[df["timestamp"] >= start_dt]
             bars: List[BarData] = []
             for _, row in df.iterrows():
                 if {"open", "high", "low", "close", "volume"}.issubset(row.index):
@@ -99,9 +113,9 @@ class PaperBroker(BrokerInterface):
                         volume=int(row["volume"]) if pd.notna(row["volume"]) else 0,
                     ))
             return bars
-
+        
         # DB mode
-        if not self.config.db_path:
+        elif not self.config.db_path:
             return []
         end_date = datetime.now()
         if 'D' in duration:
@@ -139,10 +153,15 @@ class PaperBroker(BrokerInterface):
         self._md_stops[key] = stop
 
         def run_csv():
-            df = pd.read_csv(self.config.csv_path)  # type: ignore[arg-type]
-            df["timestamp"] = pd.to_datetime(df["timestamp"])
-            df = df[(df["symbol"] == contract.symbol) & (df["exchange"] == contract.exchange)]
-            df = df.sort_values("timestamp")
+            if self.config.csv_path != None:
+                df = pd.read_csv(self.config.csv_path)  # type: ignore[arg-type]
+                df["timestamp"] = pd.to_datetime(df["timestamp"])
+                df = df[(df["symbol"] == contract.symbol) & (df["exchange"] == contract.exchange)]
+                df = df.sort_values("timestamp")
+            else:
+                tick_data = JioH5Adapter(self.config.h5_path)
+                df = tick_data.tick_df(contract.symbol, contract.strike, contract.right, contract.expiry)
+                
             for _, row in df.iterrows():
                 if stop.is_set():
                     break
@@ -193,7 +212,7 @@ class PaperBroker(BrokerInterface):
 
         def run():
             try:
-                if self.config.mode == "csv":
+                if self.config.mode == "csv" or self.config.mode == 'h5':
                     run_csv()
                 else:
                     run_db()
@@ -245,4 +264,57 @@ class PaperBroker(BrokerInterface):
     def get_account_info(self) -> Dict[str, Any]:
         return {"account": "PAPER", "cash": 1_000_000}
 
+    def get_option_chain(self, contract: Contract, callback: Callable):
+        df = JioH5Adapter(self.config.h5_path)
+        option_chain = df.options_table()
+        
+        if not option_chain.empty:
+            strikes = option_chain['Strike'].unique()
+            expiration_dates = option_chain['Expiry'].unique()
+            option_types = option_chain['OptionType'].unique()
+            
+            # More efficient: nested defaultdict
+            ltp = defaultdict(lambda: defaultdict(dict))
+            
+            # Filter once for the contract expiry
+            filtered_chain = option_chain[option_chain['Expiry'] == contract.expiry]
+            
+            # Iterate through filtered data
+            for idx, row in filtered_chain.iterrows():
+                timestamp = idx
+                op_type = row['OptionType']
+                strike = row['Strike']
+                price = row['Close']
+                
+                # Automatically creates nested structure
+                ltp[timestamp][op_type][strike] = price
+            
+            # Convert to regular dict (optional)
+            ltp = {ts: {ot: dict(strikes) for ot, strikes in types.items()} 
+                for ts, types in ltp.items()}
+            
+            oc = OptionChain(
+                underlying_symbol=contract.symbol,
+                strikes=strikes,
+                expiration_dates=expiration_dates,
+                types=option_types,
+                ltp=ltp
+            )
+        for ts in ltp.keys():
+            call_oc = OptionChain(
+                underlying_symbol=contract.symbol,
+                strikes= list(ltp[ts]['CE'].keys()),
+                expiration_dates=expiration_dates,
+                types=option_types,
+                ltp = ltp[ts]['CE']
+            )
 
+            put_oc = OptionChain(
+                underlying_symbol=contract.symbol,
+                strikes= list(ltp[ts]['PE'].keys()),
+                expiration_dates=expiration_dates,
+                types=option_types,
+                ltp = ltp[ts]['PE']
+            )
+            callback(call_oc)
+            callback(put_oc)

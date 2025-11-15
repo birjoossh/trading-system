@@ -219,6 +219,8 @@ class OptionChain:
     expiration_dates: List[str]
     strikes: List[float]
     options: List[Contract]  # List of option contracts
+    ltp: Dict{datetime: [float]}
+    type: List[str]
     last_updated: datetime = field(default_factory=datetime.now)
 
 @dataclass
