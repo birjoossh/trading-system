@@ -13,14 +13,12 @@ class JioH5Adapter:
         self.h5_path = h5_path
         with pd.HDFStore(h5_path, mode="r") as store:
             self.keys = list(store.keys())
-            print("all keys - ", self.keys)
 
     def _read_tick(self) -> pd.DataFrame:
         with pd.HDFStore(self.h5_path, mode="r") as store:
             key = "/tick_data" if "/tick_data" in self.keys else "tick_data"
             df = store[key]
         df = df.copy(); df.columns = [str(c).strip() for c in df.columns]
-        print("df = ", df)
 
         ts_cands = ["Timestamp","timestamp","time","datetime","DateTime","ts"]
         px_cands = ["Close","close","ltp","LTP","price","Price","last","Last"]

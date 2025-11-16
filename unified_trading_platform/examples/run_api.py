@@ -14,7 +14,6 @@ sys.path.insert(0, str(project_root))
 
 from unified_trading_platform.api.main import app
 
-
 def main():
     """Main entry point for running the API"""
     parser = argparse.ArgumentParser(description="Run the Unified Trading Platform API")
@@ -68,7 +67,6 @@ def main():
         workers=args.workers if not args.reload else 1,
         log_level=args.log_level,
     )
-
 
 if __name__ == "__main__":
     main()

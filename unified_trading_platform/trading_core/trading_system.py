@@ -71,6 +71,8 @@ class TradingSystem:
             self.brokers[name].disconnect()
             del self.brokers[name]
             self.logger.info(f"Broker '{name}' removed")
+            return True
+        return False
 
     def get_historical_data(self, symbol: str, exchange: str,
                           security_type: str = "STK", currency: str = "USD",

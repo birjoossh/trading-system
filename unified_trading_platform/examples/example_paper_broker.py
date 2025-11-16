@@ -71,12 +71,10 @@ def main():
     try:
         # Get Option chain
         print_section("Getting Option Chain")
-        logger.info("Fetching option chain for AAPL...")
+        logger.info("Fetching option chain...")
         option_chain = trading_system.get_option_chain("paper", contract=Contract(
             symbol="NIFTY",
             exchange="NSE",
-            security_type=SecurityType.STOCK,
-            currency="INR",
             expiry = "2024-01-04"
         ))
         if option_chain:
@@ -86,12 +84,12 @@ def main():
         # Get Historical Data
         print_section("Getting Historical Data")
 
-        logger.info("Fetching historical data for AAPL...")
+        logger.info("Fetching historical data...")
         hist_data = trading_system.get_historical_data(
             symbol="NIFTY 50",
             exchange="NSE",
             security_type="STK",
-            currency="USD",
+            currency="INR",
             duration="5 D",  # 5 days
             bar_size="1H",
             broker_name="paper"
@@ -114,7 +112,7 @@ def main():
         print_section("Order Management Examples")
 
         # Submit a limit buy order
-        logger.info("Submitting limit buy order for 100 AAPL shares...")
+        logger.info("Submitting limit buy order...")
         limit_price = 255.46 #current_price #* 0.99  # 1% below current price
 
         buy_order_id = trading_system.submit_limit_order(
@@ -127,7 +125,7 @@ def main():
         )
 
         # Submit a limit sell order
-        logger.info("Submitting limit sell order for 50 AAPL shares...")
+        logger.info("Submitting limit sell order...")
         sell_limit_price = 255.46 #current_price * 1.01  # 1% above current price
         sell_order_id = trading_system.submit_limit_order(
             symbol="NIFTY 50",

@@ -4,7 +4,7 @@ Provides global access to the trading system for API endpoints.
 """
 
 from typing import Optional
-from unified_trading_platform.trading_core.main import TradingSystem
+from unified_trading_platform.trading_core.trading_system import TradingSystem
 
 _trading_system: Optional[TradingSystem] = None
 

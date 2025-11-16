@@ -11,7 +11,8 @@ import sqlite3
 import json
 
 from unified_trading_platform.trading_core.utils import get_logger
-from unified_trading_platform.trading_core.brokers.base_broker import BrokerInterface, Contract, BarData, TickData
+from unified_trading_platform.trading_core.brokers.base_broker \
+    import BrokerInterface, Contract, BarData, TickData, OptionChain
 
 # Initialize logger
 logger = get_logger(__name__)
@@ -102,10 +103,9 @@ class DataManager:
             self._cache_bars(bars)
         return bars  # Should already be List[TickData] from broker
 
-    def get_option_chain(self, broker_name: Optional[str] = None, contract: Contract = None) -> pd.DataFrame:
+    def get_option_chain(self, broker_name: Optional[str] = None, contract: Contract = None) -> OptionChain:
         broker = self._get_broker(broker_name)
-        option_chain = broker.get_option_chain(contract)
-        return option_chain
+        return broker.get_option_chain(contract)
 
     def _cache_bars(self, bars: List[TickData]):
         """Cache a list of TickData objects to the database

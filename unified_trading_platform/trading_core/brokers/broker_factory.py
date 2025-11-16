@@ -43,7 +43,7 @@ class BrokerFactory:
 # Register Interactive Brokers
 try:
     from .interactive_brokers.ib_broker import IBBroker
-    print("Registering Interactive Brokers ...")
+    logger.info("Registering Interactive Brokers ...")
     BrokerFactory.register_broker('ib', IBBroker)
     BrokerFactory.register_broker('interactive_brokers', IBBroker)
 except ImportError:
@@ -57,7 +57,7 @@ except ImportError:
 # Register Paper broker
 try:
     from .paper_broker.paper_broker import PaperBroker
-    print("Registering Paper broker ...")
+    logger.info("Registering Paper broker ...")
     BrokerFactory.register_broker('paper', PaperBroker)
 except ImportError:
     logger.warning("Paper broker not available")

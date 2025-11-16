@@ -81,9 +81,9 @@ class TickType(Enum):
 class Contract:
     """Represents a tradeable instrument with enhanced support for options"""
     symbol: str
-    security_type: SecurityType
     exchange: str
-    currency: str
+    security_type: Optional[SecurityType] = SecurityType.STOCK
+    currency: Optional[str] = None
     local_symbol: Optional[str] = None
     expiry: Optional[str] = None  # Format: YYYYMMDD for options
     strike: Optional[float] = None  # Strike price for options
@@ -350,9 +350,7 @@ class BrokerInterface(ABC):
         pass
 
     @abstractmethod
-    def get_option_chain(self, underlying_contract: Contract, 
-                        expiration_dates: Optional[List[str]] = None,
-                        strikes: Optional[List[float]] = None) -> OptionChain:
+    def get_option_chain(self, option_contract: Contract) -> OptionChain:
         """Get option chain for an underlying instrument"""
         pass
 

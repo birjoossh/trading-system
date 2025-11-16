@@ -11,7 +11,7 @@ from .data import (
     BarData,
     HistoricalDataResponse,
     OptionChainRequest,
-    OptionChainInfo,
+    OptionChainResponse,
     MarketDataSubscriptionRequest,
     MarketDataSubscriptionResponse,
 )
@@ -48,6 +48,7 @@ __all__ = [
     "BarData",
     "HistoricalDataResponse",
     "OptionChainRequest",
+    "OptionChainResponse",
     "OptionChainInfo",
     "MarketDataSubscriptionRequest",
     "MarketDataSubscriptionResponse",

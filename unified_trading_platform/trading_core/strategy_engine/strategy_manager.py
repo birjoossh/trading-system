@@ -40,7 +40,7 @@ from ...database.db_utils import (
     save_portfolio_snapshot,
     save_pnl_snapshot,
 )
-from unified_trading_platform.trading_core.main import TradingSystem
+from unified_trading_platform.trading_core.trading_system import TradingSystem
 from unified_trading_platform.trading_core.config.config import Config
 
 class StrategyManager:
