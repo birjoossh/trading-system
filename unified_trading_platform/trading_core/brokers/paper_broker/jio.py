@@ -20,6 +20,7 @@ class JioH5Adapter:
             key = "/tick_data" if "/tick_data" in self.keys else "tick_data"
             df = store[key]
         df = df.copy(); df.columns = [str(c).strip() for c in df.columns]
+        print("df = ", df)
 
         ts_cands = ["Timestamp","timestamp","time","datetime","DateTime","ts"]
         px_cands = ["Close","close","ltp","LTP","price","Price","last","Last"]
@@ -107,8 +108,25 @@ class JioH5Adapter:
         opt = df[df["OptionType"].isin(["CE","PE"]) & df["Strike"].notna()].copy()
         if "Expiry" not in opt.columns: opt["Expiry"] = pd.NaT
         opt["Timestamp"] = opt.index.floor("1min")
-        return (opt.groupby(["Timestamp","OptionType","Strike","Expiry"])["Close"]   
-                   .last().reset_index().set_index("Timestamp").sort_index())
+        opt["Exchange"] = "NSE"
+        # Resample and aggregate
+        result = (opt
+            .groupby(["tsym", "OptionType", "Strike", "Expiry", pd.Grouper(freq='1min')], observed=True)
+            .agg({
+                'price': 'last',  # Last price
+                'volume': 'sum',  # Sum of volume
+                'lot': 'last',  # Keep the last lot size
+                'Exchange': 'last'
+            })
+            .reset_index()
+            .rename(columns={
+                'tsym': 'Symbol',
+                'level_4': 'timestamp'
+            })
+        )
+        result.index = result['timestamp']
+        return result[['Symbol', 'OptionType', 'Strike', 'Expiry', 'price', 'volume', 'lot', 'Exchange']]
+
     
     def spot_ohlc(self,bar_length:str) -> pd.DataFrame:
         df = self._read_tick()

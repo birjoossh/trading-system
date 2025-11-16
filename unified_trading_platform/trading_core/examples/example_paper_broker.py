@@ -59,7 +59,6 @@ def main():
         broker_type="paper",
         **paper_config
     )
-
     if not success:
         logger.error("Failed to connect to Paper Broker")
         return
@@ -74,15 +73,14 @@ def main():
         print_section("Getting Option Chain")
         logger.info("Fetching option chain for AAPL...")
         option_chain = trading_system.get_option_chain("paper", contract=Contract(
-            symbol="AAPL",
-            exchange="NASDAQ",
+            symbol="NIFTY",
+            exchange="NSE",
             security_type=SecurityType.STOCK,
             currency="INR",
             expiry = "2024-01-04"
         ))
         if option_chain:
-            logger.info(f"Retrieved {len(option_chain)} options")
-            logger.info("Latest 5 options:")
+            logger.info(f"Retrieved option chain:")
             logger.info(f"\n{option_chain}")
 
         # Get Historical Data
@@ -161,16 +159,16 @@ def main():
         cancel_success = trading_system.cancel_order(sell_order_id)
         print(f"Cancel result: {'Success' if cancel_success else 'Failed'}")
 
-    #     # Account Information
-    #     print_section("Account Information")
+        # Account Information
+        print_section("Account Information")
 
-    #     account_info = trading_system.get_account_info("ib")
-    #     if account_info:
-    #         logger.info(f"Account Information: ${json.dump()}")
+        account_info = trading_system.get_account_info("paper")
+        if account_info:
+            logger.info(f"Account Information: ${json.dumps(account_info)}")
 
-    #     # Positions
-    #     positions = trading_system.get_positions()
-    #     logger.info(f"\nCurrent Positions: {json.dump(positions)}")
+        # Positions
+        positions = trading_system.get_positions()
+        logger.info(f"\nCurrent Positions: {json.dumps(positions)}")
        
         # Order History
         print_section("Order History")

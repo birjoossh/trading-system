@@ -28,7 +28,12 @@ from ..base_broker import (
     TickData,
     SecurityType,
     OptionChain,
-    OrderStatus
+    UnderlyingInfo,
+    StrikeGroup,
+    ExpirationGroup,
+    OptionContract,
+    OrderStatus,
+    OptionRight
 )
 
 from .jio import JioH5Adapter
@@ -82,70 +87,173 @@ class PaperBroker(BrokerInterface):
 
         df = JioH5Adapter(self.config.h5_path)
         option_chain = df.options_table()
+
+        #  Apply filters based on contract
+        filters = []
+        # Filter by symbol (extract base symbol from contract)
+        if contract.symbol:
+            base_symbol = contract.symbol.split('2')[0]  # Extract NIFTY from NIFTY2410418300CE
+            filters.append(option_chain['Symbol'].str.startswith(base_symbol))
         
-        if not option_chain.empty:
-            strikes = option_chain['Strike'].unique()
-            expiration_dates = option_chain['Expiry'].unique()
-            option_types = option_chain['OptionType'].unique()
-            
-            # More efficient: nested defaultdict
-            ltp = defaultdict(lambda: defaultdict(dict))
-            
-            # Filter once for the contract expiry
-            filtered_chain = option_chain[option_chain['Expiry'] == expiry_date] 
+        # Filter by exchange if provided
+        if contract.exchange:
+            filters.append(option_chain['Exchange'] == contract.exchange)
+        
+        # Filter by expiry if provided
+        if expiry_date:
+            filters.append(option_chain['Expiry'] == expiry_date)
+        
+        # Apply all filters
+        if filters:
+            option_chain = option_chain[pd.concat(filters, axis=1).all(axis=1)]
+        
+        if option_chain.empty:
+            return None
 
-            # Iterate through filtered data
-            for idx, row in filtered_chain.iterrows():
-                timestamp = idx
-                op_type = row['OptionType']
-                strike = row['Strike']
-                price = row['Close']
+        print("option_chain", option_chain)
+        
+        # Create underlying info
+        underlying_symbol = contract.symbol.split('2')[0]  # Extract NIFTY from NIFTY2410418300CE
+        underlying_info = UnderlyingInfo(
+            underlying_symbol=underlying_symbol
+            #underlying_contract=contract
+        )
+        # Process the option chain data
+        if not pd.api.types.is_datetime64_any_dtype(option_chain.index):
+            option_chain.index = pd.to_datetime(option_chain.index)
+        
+        # Group by expiry date
+        expiration_groups = []
+        for expiry_date, expiry_group in option_chain.groupby('Expiry'):
+            # Calculate days to expiry
+            days_to_expiry = (expiry_date - datetime.now().date()).days
+            
+            # Group by strike price
+            strike_groups = []
+            for strike_price, strike_group in expiry_group.groupby('Strike'):
+                # Group by option type (CE/PE)
+                call_data = strike_group[strike_group['OptionType'] == 'CE']
+                put_data = strike_group[strike_group['OptionType'] == 'PE']
+            
+                # Process call option if exists
+                call_option = None
+                if not call_data.empty:
+                    latest_call = call_data.iloc[-1]  # Get the latest data point
+                    call_option = OptionContract(
+                        option_ticker=latest_call['Symbol'],
+                        ltp=float(latest_call['price']),
+                        type=OptionRight.CALL,
+                        lot=latest_call['lot'],
+                        last_updated=latest_call.name.to_pydatetime()
+                    )
                 
-                # Automatically creates nested structure
-                ltp[timestamp][op_type][strike] = price
+                # Process put option if exists
+                put_option = None
+                if not put_data.empty:
+                    latest_put = put_data.iloc[-1]  # Get the latest data point
+                    put_option = OptionContract(
+                        option_ticker=latest_put['Symbol'],
+                        ltp=float(latest_put['price']),
+                        type=OptionRight.PUT,
+                        lot=latest_put['lot'],
+                        last_updated=latest_put.name.to_pydatetime()
+                    )
+                
+                # Only add strike group if at least one option exists
+                if call_option or put_option:
+                    strike_groups.append(StrikeGroup(
+                        strike_price=float(strike_price),
+                        call_option=call_option,
+                        put_option=put_option
+                    ))
+        
+            # Sort strikes by price
+            strike_groups.sort(key=lambda x: x.strike_price)
             
-            # Convert to regular dict (optional)
-            ltp = {ts: {ot: dict(strikes) for ot, strikes in types.items()} 
-                for ts, types in ltp.items()}
-            
-            oc = OptionChain(
-                underlying_symbol=contract.symbol,
-                strikes=strikes,
-                expiration_dates=expiration_dates,
-                type=option_types,
-                ltp=ltp,
-                underlying_contract=contract,
-                tick_size=None, # fixme: where to find this?
-                trading_class=contract.trading_class,
-                options=option_chain
-            )
-        for ts in ltp.keys():
-            call_oc = OptionChain(
-                underlying_symbol=contract.symbol,
-                strikes= list(ltp[ts]['CE'].keys()),
-                expiration_dates=expiration_dates,
-                type=option_types,
-                ltp = ltp[ts]['CE'],
-                underlying_contract=contract,
-                tick_size=None, # fixme: where to find this?
-                trading_class=contract.trading_class,
-                options=option_chain
-            )
+            # Only add expiration group if there are valid strikes
+            if strike_groups:
+                expiration_groups.append(ExpirationGroup(
+                    expiry_date=expiry_date,
+                    days_to_expiry=days_to_expiry,
+                    strikes=strike_groups
+                ))
+    
+        # Sort expiration dates
+        expiration_groups.sort(key=lambda x: x.expiry_date)
+    
+        # Create and return the option chain
+        return OptionChain(
+            contract=contract,
+            underlying_info=underlying_info,
+            expiration_dates=expiration_groups
+    )
 
-            put_oc = OptionChain(
-                underlying_symbol=contract.symbol,
-                strikes= list(ltp[ts]['PE'].keys()),
-                expiration_dates=expiration_dates,
-                type=option_types,
-                ltp = ltp[ts]['PE'],
-                underlying_contract=contract,
-                tick_size=None, # fixme: where to find this?
-                trading_class=contract.trading_class,
-                options=option_chain
-            )
-            return call_oc, put_oc
-            #callback(call_oc)
-            #callback(put_oc)
+        # if not option_chain.empty:
+        #     strikes = option_chain['Strike'].unique()
+        #     expiration_dates = option_chain['Expiry'].unique()
+        #     option_types = option_chain['OptionType'].unique()
+            
+        #     # More efficient: nested defaultdict
+        #     ltp = defaultdict(lambda: defaultdict(dict))
+            
+        #     # Filter once for the contract expiry
+        #     print("expiry_date", expiry_date)
+        #     print("contract.symbol", contract.symbol)
+        #     filtered_chain = option_chain[(option_chain['Expiry'] == expiry_date) & \
+        #         (option_chain['Symbol'] == contract.symbol)]
+
+        #     # Iterate through filtered data
+        #     for idx, row in filtered_chain.iterrows():
+        #         timestamp = idx
+        #         op_type = row['OptionType']
+        #         strike = row['Strike']
+        #         price = row['price']
+                
+        #         # Automatically creates nested structure
+        #         ltp[timestamp][op_type][strike] = price
+            
+        #     # Convert to regular dict (optional)
+        #     ltp = {ts: {ot: dict(strikes) for ot, strikes in types.items()} 
+        #         for ts, types in ltp.items()}
+            
+        #     oc = OptionChain(
+        #         underlying_symbol=contract.symbol,
+        #         strikes=strikes,
+        #         expiration_dates=expiration_dates,
+        #         type=option_types,
+        #         ltp=ltp,
+        #         underlying_contract=contract,
+        #         tick_size=None, # fixme: where to find this?
+        #         trading_class=contract.trading_class,
+        #         options=option_chain
+        #     )
+        # for ts in ltp.keys():
+        #     call_oc = OptionChain(
+        #         underlying_symbol=contract.symbol,
+        #         strikes= list(ltp[ts]['CE'].keys()),
+        #         expiration_dates=expiration_dates,
+        #         type=option_types,
+        #         ltp = ltp[ts]['CE'],
+        #         underlying_contract=contract,
+        #         tick_size=None, # fixme: where to find this?
+        #         trading_class=contract.trading_class,
+        #         options=option_chain
+        #     )
+
+        #     put_oc = OptionChain(
+        #         underlying_symbol=contract.symbol,
+        #         strikes= list(ltp[ts]['PE'].keys()),
+        #         expiration_dates=expiration_dates,
+        #         type=option_types,
+        #         ltp = ltp[ts]['PE'],
+        #         underlying_contract=contract,
+        #         tick_size=None, # fixme: where to find this?
+        #         trading_class=contract.trading_class,
+        #         options=option_chain
+        #     )
+        #     return call_oc, put_oc
+        #     #callback(call_oc)
+        #     #callback(put_oc)
 
     # ---- Market Data ----
     def get_historical_data(self, contract: Contract, duration: str,

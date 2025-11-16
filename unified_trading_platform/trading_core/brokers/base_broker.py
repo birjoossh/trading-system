@@ -210,19 +210,55 @@ class MarketDataError:
     error_message: str
     timestamp: datetime = field(default_factory=datetime.now)
 
+# @dataclass
+# class OptionChain:
+#     """Represents option chain data for a given underlying"""
+#     underlying_symbol: str
+#     underlying_contract: Contract
+#     tick_size: int
+#     trading_class: str
+#     expiration_dates: List[str]
+#     strikes: List[float]
+#     options: List[Contract]  # List of option contracts
+#     ltp: Dict[datetime, List[float]]
+#     type: List[str]
+#     last_updated: datetime = field(default_factory=datetime.now)
+
+@dataclass
+class UnderlyingInfo:
+    """Underlying asset information"""
+    underlying_symbol: str
+    #underlying_contract: int
+
+@dataclass
+class OptionContract:
+    """Option contract data"""
+    option_ticker: str 
+    ltp: float
+    type: OptionRight 
+    lot: int
+    last_updated: datetime = field(default_factory=datetime.now)
+
+@dataclass
+class StrikeGroup:
+    """Group of options at a specific strike price"""
+    strike_price: float
+    call_option: Optional[OptionContract] = None
+    put_option: Optional[OptionContract] = None
+
+@dataclass
+class ExpirationGroup:
+    """Group of options expiring on the same date"""
+    expiry_date: datetime.date
+    days_to_expiry: int
+    strikes: List[StrikeGroup]
+
 @dataclass
 class OptionChain:
-    """Represents option chain data for a given underlying"""
-    underlying_symbol: str
-    underlying_contract: Contract
-    tick_size: int
-    trading_class: str
-    expiration_dates: List[str]
-    strikes: List[float]
-    options: List[Contract]  # List of option contracts
-    ltp: Dict[datetime, List[float]]
-    type: List[str]
-    last_updated: datetime = field(default_factory=datetime.now)
+    """Complete option chain data"""
+    contract: Contract
+    underlying_info: UnderlyingInfo
+    expiration_dates: List[ExpirationGroup]
 
 @dataclass
 class Greeks:
