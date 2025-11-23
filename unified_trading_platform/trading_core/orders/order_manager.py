@@ -7,13 +7,12 @@ from typing import Dict, List, Optional, Any, Callable
 from datetime import datetime
 import uuid
 import sqlite3
-import json
 
 from unified_trading_platform.trading_core.utils import get_logger
-from ..brokers.base_broker import (
-    BrokerInterface, Contract, Order as BaseOrder, OrderType, OrderStatus,
-    OrderAction, Trade, ManagedOrder
+from unified_trading_platform.trading_core.data_models import (
+    OrderStatus, ManagedOrder, Contract, Order
 )
+from unified_trading_platform.trading_core.brokers.base_broker import BrokerInterface
 
 # Initialize logger
 logger = get_logger(__name__)
@@ -98,7 +97,7 @@ class OrderManager:
         broker.register_callback('order_status', self._on_order_status)
         broker.register_callback('trade_execution', self._on_trade_execution)
 
-    def submit_order(self, contract: Contract, order: BaseOrder, broker_name: str) -> str:
+    def submit_order(self, contract: Contract, order: Order, broker_name: str) -> str:
         """Submit an order through specified broker"""
         if broker_name not in self.brokers:
             raise ValueError(f"Broker '{broker_name}' not found")

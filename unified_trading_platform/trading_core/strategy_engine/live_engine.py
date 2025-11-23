@@ -4,22 +4,20 @@ Extracted and refactored from the Backtester class to work with live and histori
 """
 
 from __future__ import annotations
-from typing import List, Dict, Optional, Any
-from datetime import datetime, time, timedelta
+from typing import List, Dict, Optional
 from dataclasses import dataclass, field
 import pandas as pd
-import numpy as np
 
 from unified_trading_platform.trading_core.utils import get_logger
-from unified_trading_platform.trading_core.brokers.base_broker import TickData, Contract, OrderAction, OrderType
-#from .base_engine import BaseStrategyEngine
+from unified_trading_platform.trading_core.data_models import (
+    OrderAction, OrderType, TickData, Contract
+)
 
 # Initialize logger
 logger = get_logger(__name__)
 
 from .config import StrategyConfig, LegSpec, StrikeCriteria, RiskConfig, RiskRule, TrailRule, ReEntryRule
 from .strikes import select_strike
-from ..brokers.base_broker import Contract, Order, OrderAction, OrderType, TickData
 
 @dataclass
 class OrderSignal:
@@ -145,6 +143,7 @@ class UnifiedStrategyEngine:
             return signals  # Need option chain for entry
 
         for leg in self.live_legs:
+            logger.debug(f"Checking entry conditions for leg: {leg}")
             if leg.entry_ts is not None:
                 continue  # Already entered
                 

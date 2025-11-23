@@ -1,7 +1,15 @@
+"""
+JioH5Adapter: Adapter for Jio HDF5 data format.
+
+This module provides an interface to read and process HDF5 files containing
+market data in the Jio format, including tick data, spot prices, and options data.
+"""
 from __future__ import annotations
-from datetime import datetime
+
+from datetime import datetime, date
 from pathlib import Path
-from click import DateTime
+from typing import Dict, List, Optional, Tuple, Union
+
 import pandas as pd
 
 class JioH5Adapter:

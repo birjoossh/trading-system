@@ -4,44 +4,91 @@ Supports CSV and SQLite DB as data sources for historical bars and tick replay.
 """
  # to do 
  ## implement the h5 file tick processing
-from __future__ import annotations
-
+"""
+PaperBroker: Simulated broker that replays market data and accepts orders.
+Supports CSV and SQLite DB as data sources for historical bars and tick replay.
+"""
 import logging
-from enum import unique
-from typing import List, Dict, Any, Optional, Callable
-from dataclasses import dataclass
-from datetime import datetime, timedelta
-from collections import defaultdict
+import sqlite3
 import threading
 import time
-import sqlite3
+from collections import defaultdict
+from dataclasses import dataclass, field
+from datetime import datetime, timedelta
+from enum import Enum, unique
 from pathlib import Path
-from unified_trading_platform.trading_core.utils.utils import fromYYMMDD
-from unified_trading_platform.trading_core.utils import get_logger
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
-from click import option
 import pandas as pd
 
-from ..base_broker import (
-    BrokerInterface,
-    Contract,
-    Order,
-    BarData,
-    TickData,
-    SecurityType,
-    OptionChain,
-    UnderlyingInfo,
-    StrikeGroup,
-    ExpirationGroup,
-    OptionContract,
-    OrderStatus,
-    OptionRight
-)
+from unified_trading_platform.trading_core.brokers.base_broker import BrokerInterface
+from unified_trading_platform.trading_core.data_models import Contract
+from unified_trading_platform.trading_core.data_models import (Order, OrderAction, OrderStatus, OrderType)
+from unified_trading_platform.trading_core.data_models import OptionChain, StrikeGroup, ExpirationGroup
+from unified_trading_platform.trading_core.data_models import OptionContract
+from unified_trading_platform.trading_core.data_models import OptionRight
+from unified_trading_platform.trading_core.data_models import TickData
+from unified_trading_platform.trading_core.data_models import UnderlyingInfo
+from unified_trading_platform.trading_core.utils import get_logger
+from unified_trading_platform.trading_core.utils.utils import fromYYMMDD
 
 from .jio import JioH5Adapter
 
 # Initialize logger
 logger = get_logger(__name__)
+
+
+@dataclass
+class Order:
+    """Represents an order in the trading system."""
+    
+    action: OrderAction
+    order_type: OrderType
+    total_quantity: float
+    limit_price: Optional[float] = None
+    stop_price: Optional[float] = None
+    tif: str = "DAY"  # Time in force: DAY, GTC, etc.
+    order_id: Optional[str] = None
+    status: OrderStatus = OrderStatus.PENDING
+    filled_quantity: float = 0.0
+    avg_fill_price: Optional[float] = None
+    parent_id: Optional[str] = None
+    transmit: bool = True
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert the order to a dictionary."""
+        return {
+            'action': self.action.value,
+            'order_type': self.order_type.value,
+            'total_quantity': self.total_quantity,
+            'limit_price': self.limit_price,
+            'stop_price': self.stop_price,
+            'tif': self.tif,
+            'order_id': self.order_id,
+            'status': self.status.value,
+            'filled_quantity': self.filled_quantity,
+            'avg_fill_price': self.avg_fill_price,
+            'parent_id': self.parent_id,
+            'transmit': self.transmit
+        }
+    
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'Order':
+        """Create an Order instance from a dictionary."""
+        return cls(
+            action=OrderAction(data['action']),
+            order_type=OrderType(data['order_type']),
+            total_quantity=data['total_quantity'],
+            limit_price=data.get('limit_price'),
+            stop_price=data.get('stop_price'),
+            tif=data.get('tif', 'DAY'),
+            order_id=data.get('order_id'),
+            status=OrderStatus(data.get('status', 'PENDING')),
+            filled_quantity=data.get('filled_quantity', 0.0),
+            avg_fill_price=data.get('avg_fill_price'),
+            parent_id=data.get('parent_id'),
+            transmit=data.get('transmit', True)
+        )
 
 @dataclass
 class PaperBrokerConfig:
@@ -79,26 +126,29 @@ class PaperBroker(BrokerInterface):
     def connect(self, **kwargs) -> bool:
         self.is_connected = True
         return True
-
+    
     def disconnect(self) -> bool:
         for stop in list(self._md_stops.values()):
             stop.set()
         self.is_connected = False
         return True
 
+    def normalize_symbol(self, symbol: str) -> str:
+        symbol = symbol.split('2')[0]
+        symbol = symbol.split(' ')[0]
+        return symbol
+
     # ---- Option Chain ----
     def get_option_chain(self, contract: Contract) -> OptionChain:
-        # format date
-        expiry_date = pd.to_datetime(contract.expiry).date()
-
         df = JioH5Adapter(self.config.h5_path)
         option_chain = df.options_table()
+        print("option_chain = ", option_chain)
 
         #  Apply filters based on contract
         filters = []
         # Filter by symbol (extract base symbol from contract)
         if contract.symbol:
-            base_symbol = contract.symbol.split('2')[0]  # Extract NIFTY from NIFTY2410418300CE
+            base_symbol = self.normalize_symbol(contract.symbol)
             filters.append(option_chain['Symbol'].str.startswith(base_symbol))
         
         # Filter by exchange if provided
@@ -106,7 +156,9 @@ class PaperBroker(BrokerInterface):
             filters.append(option_chain['Exchange'] == contract.exchange)
         
         # Filter by expiry if provided
-        if expiry_date:
+        if contract.expiry:
+            # format date
+            expiry_date = pd.to_datetime(contract.expiry).date()
             filters.append(option_chain['Expiry'] == expiry_date)
         
         # Apply all filters
@@ -194,9 +246,9 @@ class PaperBroker(BrokerInterface):
 
     # ---- Market Data ----
     def get_historical_data(self, contract: Contract, duration: str,
-                          bar_size: str, what_to_show: str = "TRADES") -> List[BarData]:
+                          bar_size: str, what_to_show: str = "TRADES") -> List[TickData]:
         logger.info(f"Fetching historica data {contract}")
-        df = df = pd.DataFrame()
+        df = pd.DataFrame()
         if self.mode == "csv":
             if not self.config.csv_path:
                 return []
@@ -211,6 +263,7 @@ class PaperBroker(BrokerInterface):
                 opt_type=contract.right, expiry=contract.expiry, bar_length=bar_size)
 
         if not df.empty:
+            print("df summary", df.head(10))
             end_dt = df["timestamp"].iloc[-1]
             num, unit = duration.split()
             num = int(num)
@@ -223,17 +276,21 @@ class PaperBroker(BrokerInterface):
             else:
                 start_dt = end_dt - timedelta(days=30)
             df = df[df["timestamp"] >= start_dt]
-            bars: List[BarData] = []
+            ticks: List[TickData] = []
             for _, row in df.iterrows():
-                bars.append(BarData(
+                ticks.append(TickData(
                     timestamp=row["timestamp"],
+                    exchange=contract.exchange,
+                    security_type=contract.security_type,
+                    symbol=contract.symbol,
+                    currency=contract.currency,
                     open=float(row["open"]),
                     high=float(row["high"]),
                     low=float(row["low"]),
                     close=float(row["close"]),
                     volume=int(row["volume"]) if pd.notna(row["volume"]) else 0,
                 ))
-            return bars
+            return ticks
         
         # DB mode
         elif not self.config.db_path:
@@ -252,14 +309,14 @@ class PaperBroker(BrokerInterface):
             "FROM historical_bars WHERE symbol = ? AND exchange = ? AND bar_size = ? "
             "AND timestamp >= ? AND timestamp <= ? ORDER BY timestamp"
         )
-        bars: List[BarData] = []
+        bars: List[TickData] = []
         with sqlite3.connect(self.config.db_path) as conn:
             rows = conn.execute(query, (
                 contract.symbol, contract.exchange, bar_size,
                 start_date.isoformat(), end_date.isoformat()
             )).fetchall()
             for ts, op, hi, lo, cl, vol in rows:
-                bars.append(BarData(
+                bars.append(TickData(
                     timestamp=pd.to_datetime(ts),
                     open=float(op), high=float(hi), low=float(lo), close=float(cl),
                     volume=int(vol) if vol is not None else 0,

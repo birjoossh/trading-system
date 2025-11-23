@@ -1,0 +1,23 @@
+from enum import Enum
+
+class TickType(Enum):
+    """Common tick types for market data"""
+    BID = "BID"
+    ASK = "ASK"
+    LAST = "LAST"
+    HIGH = "HIGH"
+    LOW = "LOW"
+    CLOSE = "CLOSE"
+    VOLUME = "VOLUME"
+    BID_SIZE = "BID_SIZE"
+    ASK_SIZE = "ASK_SIZE"
+    LAST_SIZE = "LAST_SIZE"
+    OPEN = "OPEN"
+    OPEN_INTEREST = "OPEN_INTEREST"
+    DELTA = "DELTA"
+    GAMMA = "GAMMA"
+    THETA = "THETA"
+    VEGA = "VEGA"
+    RHO = "RHO"
+    IMPLIED_VOLATILITY = "IMPLIED_VOLATILITY"
+    OPTION_PRICE = "OPTION_PRICE"

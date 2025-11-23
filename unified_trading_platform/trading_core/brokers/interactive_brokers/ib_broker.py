@@ -24,11 +24,11 @@ except ImportError:
     IB_AVAILABLE = False
     logger.warning("IB API not available. Install with: pip install ibapi")
 
-from ..base_broker import (
-    BrokerInterface, Contract, Order, Trade, BarData, TickData,
-    OrderType, OrderAction, OrderStatus, SecurityType, OptionRight,
-    MarketDataType, TickType, MarketDataSubscription, MarketDataError,
-    OptionChain, Greeks
+from unified_trading_platform.trading_core.brokers import BrokerInterface
+from unified_trading_platform.trading_core.data_models import (
+    Contract, Order, Trade, TickData, OrderType, OrderAction, 
+    OrderStatus, SecurityType, MarketDataType, TickType, OptionChain, Greeks, 
+    MarketDataSubscription, MarketDataError
 )
 
 class IBBroker(BrokerInterface):
@@ -186,7 +186,7 @@ class IBBroker(BrokerInterface):
         return ib_order
 
     def get_historical_data(self, contract: Contract, duration: str,
-                          bar_size: str, what_to_show: str = "TRADES") -> List[BarData]:
+                          bar_size: str, what_to_show: str = "TRADES") -> List[TickData]:
         """Get historical bar data"""
         if not self.is_connected:
             raise Exception("Not connected to broker")
@@ -209,12 +209,16 @@ class IBBroker(BrokerInterface):
             while len(self.historical_data[req_id]) == 0 and (time.time() - start_time) < timeout:
                 time.sleep(1) # sleep 1 sec
 
-            # Convert to our BarData format
+            # Convert to our TickData format
             bars = []
             for bar in self.historical_data[req_id]:
                 try:
-                    bar_data = BarData(
+                    bar_data = TickData(
                         timestamp=datetime.strptime(bar.date, "%Y%m%d %H:%M:%S"),
+                        exchange=contract.exchange,
+                        symbol=contract.symbol,
+                        security_type=contract.security_type,
+                        currency=contract.currency,
                         open=bar.open,
                         high=bar.high,
                         low=bar.low,

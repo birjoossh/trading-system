@@ -37,7 +37,7 @@ def init_strategy_tables(db_path: str = "trading_system.db"):
                 timestamp TEXT,
                 positions TEXT,
                 cash_balance REAL,
-                total_value REAL,
+                total_value REAL, 
                 FOREIGN KEY (run_id) REFERENCES run_config (run_id)
             )
         """)

@@ -9,11 +9,11 @@ import time
 from pprint import pprint
 from dataclasses import asdict
 from datetime import datetime
-from typing import List, Dict, Any, Callable, Optional
+from typing import List
 
 from ibapi.client import BarData
 from unified_trading_platform.trading_core.brokers.interactive_brokers.ib_broker import IBBroker
-from unified_trading_platform.trading_core.brokers.base_broker import (
+from unified_trading_platform.trading_core.data_models import (
     Contract, SecurityType, OptionRight, MarketDataType
 )
 from unified_trading_platform.trading_core.utils import get_logger
@@ -93,7 +93,7 @@ def subscribe_market_data(broker, contract):
     
 def get_historical_market_data(broker, contract):
     logger.info("Get historical market data...")
-    hist_data: List[BarData] = broker.get_historical_data(
+    hist_data: List[TickData] = broker.get_historical_data(
         contract=contract,
         duration='5 D',
         bar_size='1 hour',
@@ -141,7 +141,7 @@ def main():
             currency="USD",
             conId = 756733
         )
-        logger.info("underlying = ", spy_underlying)
+        logger.info(f"underlying: {spy_underlying}")
         get_contract_details(broker, spy_underlying)
 
         option_chain = get_option_chain(broker, spy_underlying)

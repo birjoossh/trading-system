@@ -8,11 +8,12 @@ from typing import List, Dict, Optional, Callable
 from datetime import datetime, timedelta
 from dataclasses import asdict
 import sqlite3
-import json
 
 from unified_trading_platform.trading_core.utils import get_logger
-from unified_trading_platform.trading_core.brokers.base_broker \
-    import BrokerInterface, Contract, BarData, TickData, OptionChain
+from unified_trading_platform.trading_core.data_models import (
+    TickData, OptionChain, Contract
+)
+from unified_trading_platform.trading_core.brokers.base_broker import BrokerInterface
 
 # Initialize logger
 logger = get_logger(__name__)
@@ -61,14 +62,9 @@ class DataManager:
                 )
             """)
 
-    def _get_broker(self, name: str):
+    def _get_broker(self, name: str) -> BrokerInterface:
         """Add a broker for data retrieval"""
         return self.brokers[name]
-
-    def _bars_to_dataframe(self, bars: List[BarData]):
-        df = pd.DataFrame([asdict(bar) for bar in bars])
-        df.set_index('timestamp', inplace=True)
-        return df
 
     def add_broker(self, name: str, broker: BrokerInterface):
         """Add a broker for data retrieval"""

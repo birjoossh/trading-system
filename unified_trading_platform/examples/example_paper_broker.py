@@ -9,7 +9,7 @@ from datetime import datetime, timedelta
 from unified_trading_platform.trading_core.trading_system import TradingSystem
 from unified_trading_platform.trading_core.config.config import Config
 from unified_trading_platform.trading_core.utils import get_logger
-from unified_trading_platform.trading_core.brokers.base_broker import (
+from unified_trading_platform.trading_core.data_models import (
     Contract, SecurityType, OptionRight, MarketDataType
 )
 
@@ -75,7 +75,8 @@ def main():
         option_chain = trading_system.get_option_chain("paper", contract=Contract(
             symbol="NIFTY",
             exchange="NSE",
-            expiry = "2024-01-04"
+            expiry = "2024-01-04",
+            security_type=SecurityType.STOCK
         ))
         if option_chain:
             logger.info(f"Retrieved option chain:")
@@ -171,7 +172,7 @@ def main():
         # Order History
         print_section("Order History")
         order_history = trading_system.get_order_history()
-        logger.info(f"All orders in history: {json.dumps(order_history)}")
+        logger.info(f"All orders in history: {len(order_history)}")
 
         # Wait a moment for order updates
         time.sleep(100)

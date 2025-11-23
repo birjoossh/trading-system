@@ -5,7 +5,7 @@ Supports multiple brokers through a unified interface.
 
 import logging
 from typing import Dict, Type
-from .base_broker import BrokerInterface
+from unified_trading_platform.trading_core.brokers.base_broker import BrokerInterface
 from unified_trading_platform.trading_core.utils import get_logger
 
 # Initialize logger

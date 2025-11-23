@@ -12,7 +12,6 @@ from unified_trading_platform.trading_core.brokers.base_broker import OptionChai
 from ..models import (
     HistoricalDataRequest,
     HistoricalDataResponse,
-    BarData,
     OptionChainRequest,
     MarketDataSubscriptionRequest,
     MarketDataSubscriptionResponse,

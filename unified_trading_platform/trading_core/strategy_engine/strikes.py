@@ -1,7 +1,7 @@
 from __future__ import annotations
 import pandas as pd
-from .config import StrikeCriteria
-from .greeks_helper import ensure_delta
+from unified_trading_platform.trading_core.strategy_engine.config import StrikeCriteria
+from unified_trading_platform.trading_core.strategy_engine.greeks_helper import ensure_delta
 from datetime import datetime
 
 # --- helpers ---
@@ -61,32 +61,32 @@ def select_strike(chain: pd.DataFrame, option_type: str, atm_price: float,
       - DELTA_RANGE: params {lower: float, upper: float, position?: "BUY"|"SELL"}
 
     DataFrame requirements:
-      - columns: ["OptionType", "Strike", "Close", ...]
+      - columns: ["option_type", "strike", "Close", ...]
       - for delta modes, column: ["Delta"] must be present
     """
     mode = (criteria.mode or "").upper()
     params = criteria.params or {}
 
-    df = chain[chain["OptionType"].str.upper() == option_type.upper()].copy()
+    df = chain[chain["option_type"].str.upper() == option_type.upper()].copy()
     if df.empty:
         raise ValueError(f"No {option_type} rows")
 
     # common helpers
-    step = _detect_step(df["Strike"], default=50.0)
+    step = _detect_step(df["strike"], default=50.0)
     base = round(float(atm_price) / step) * step  # ATM strike from underlying
 
     def nearest_strike(target: float) -> float:
-        return float(df.iloc[(df["Strike"] - target).abs().argsort()].iloc[0]["Strike"])
+        return float(df.iloc[(df["strike"] - target).abs().argsort()].iloc[0]["strike"])
 
     def ce_pe_atm_prices() -> tuple[float, float, float]:
-        ce = chain[chain["OptionType"].str.upper() == "CE"].copy()
-        pe = chain[chain["OptionType"].str.upper() == "PE"].copy()
+        ce = chain[chain["option_type"].str.upper() == "CE"].copy()
+        pe = chain[chain["option_type"].str.upper() == "PE"].copy()
         if ce.empty or pe.empty:
             raise ValueError("Both CE and PE chains are required for this selection mode")
-        ce_strike = float(ce.iloc[(ce["Strike"] - base).abs().argsort()].iloc[0]["Strike"])
-        pe_strike = float(pe.iloc[(pe["Strike"] - base).abs().argsort()].iloc[0]["Strike"])
-        ce_px = float(ce[ce["Strike"] == ce_strike].iloc[0]["Close"])
-        pe_px = float(pe[pe["Strike"] == pe_strike].iloc[0]["Close"])
+        ce_strike = float(ce.iloc[(ce["strike"] - base).abs().argsort()].iloc[0]["strike"])
+        pe_strike = float(pe.iloc[(pe["strike"] - base).abs().argsort()].iloc[0]["strike"])
+        ce_px = float(ce[ce["strike"] == ce_strike].iloc[0]["Close"])
+        pe_px = float(pe[pe["strike"] == pe_strike].iloc[0]["Close"])
         return ce_px, pe_px, base
 
     # --- STRIKE_TYPE (ATM/ITM/OTM with steps) ---
@@ -112,13 +112,13 @@ def select_strike(chain: pd.DataFrame, option_type: str, atm_price: float,
         mid = (lower + upper) / 2.0
         if cand.empty:
             # fallback: closest to mid even if out of bounds
-            return float(df.assign(_diff=(df["Close"] - mid).abs()).sort_values("_diff").iloc[0]["Strike"])
-        return float(cand.assign(_diff=(cand["Close"] - mid).abs()).sort_values("_diff").iloc[0]["Strike"])
+            return float(df.assign(_diff=(df["Close"] - mid).abs()).sort_values("_diff").iloc[0]["strike"])
+        return float(cand.assign(_diff=(cand["Close"] - mid).abs()).sort_values("_diff").iloc[0]["strike"])
 
     # --- CLOSEST_PREMIUM ---
     if mode == "CLOSEST_PREMIUM":
         tgt = float(params.get("premium", params.get("target", 100)))
-        return float(df.iloc[(df["Close"] - tgt).abs().argsort()].iloc[0]["Strike"])
+        return float(df.iloc[(df["Close"] - tgt).abs().argsort()].iloc[0]["strike"])
 
     # --- PREMIUM_LE ---
     if mode == "PREMIUM_LE":
@@ -126,9 +126,9 @@ def select_strike(chain: pd.DataFrame, option_type: str, atm_price: float,
         cand = df[df["Close"] <= lim]
         if cand.empty:
             # choose smallest premium available
-            return float(df.sort_values("Close").iloc[0]["Strike"])
+            return float(df.sort_values("Close").iloc[0]["strike"])
         # choose maximum premium <= lim
-        return float(cand.sort_values("Close", ascending=False).iloc[0]["Strike"])
+        return float(cand.sort_values("Close", ascending=False).iloc[0]["strike"])
 
     # --- PREMIUM_GE ---
     if mode == "PREMIUM_GE":
@@ -136,9 +136,9 @@ def select_strike(chain: pd.DataFrame, option_type: str, atm_price: float,
         cand = df[df["Close"] >= lim]
         if cand.empty:
             # choose largest premium available
-            return float(df.sort_values("Close", ascending=False).iloc[0]["Strike"])
+            return float(df.sort_values("Close", ascending=False).iloc[0]["strike"])
         # choose minimum premium >= lim
-        return float(cand.sort_values("Close").iloc[0]["Strike"])
+        return float(cand.sort_values("Close").iloc[0]["strike"])
 
     # --- STRADDLE_WIDTH ---
     if mode == "STRADDLE_WIDTH":
@@ -185,7 +185,7 @@ def select_strike(chain: pd.DataFrame, option_type: str, atm_price: float,
         ce_px, pe_px, _ = ce_pe_atm_prices()
         straddle = ce_px + pe_px
         tgt_prem = (pct / 100.0) * straddle
-        return float(df.iloc[(df["Close"] - tgt_prem).abs().argsort()].iloc[0]["Strike"])
+        return float(df.iloc[(df["Close"] - tgt_prem).abs().argsort()].iloc[0]["strike"])
 
     # --- CLOSEST DELTA ---
     if mode == "CLOSEST_DELTA":
@@ -203,7 +203,7 @@ def select_strike(chain: pd.DataFrame, option_type: str, atm_price: float,
             now_dt=pd.to_datetime(params["now_dt"]).to_pydatetime() if params.get("now_dt") is not None else None,
             min_price=float(params.get("min_price", 0.01)),
         )
-        df = full[full["OptionType"].str.upper() == option_type.upper()].copy()
+        df = full[full["option_type"].str.upper() == option_type.upper()].copy()
         if "Delta" not in df.columns or df["Delta"].isna().all():
             raise ValueError("Unable to compute Delta for CLOSEST_DELTA mode")
         target = float(params.get("delta", params.get("target", 50)))
@@ -212,7 +212,7 @@ def select_strike(chain: pd.DataFrame, option_type: str, atm_price: float,
             d = d / 100.0  # accept 0-100 inputs
         t = target / 100.0 if abs(target) > 1 else abs(target)
         diff = (d - t).abs()
-        return float(df.iloc[diff.argsort()].iloc[0]["Strike"])
+        return float(df.iloc[diff.argsort()].iloc[0]["strike"])
     
     # --- DELTA_RANGE ---
     if mode == "DELTA_RANGE":
@@ -230,7 +230,7 @@ def select_strike(chain: pd.DataFrame, option_type: str, atm_price: float,
             now_dt=pd.to_datetime(params["now_dt"]).to_pydatetime() if params.get("now_dt") is not None else None,
             min_price=float(params.get("min_price", 0.01)),
         )
-        df = full[full["OptionType"].str.upper() == option_type.upper()].copy()
+        df = full[full["option_type"].str.upper() == option_type.upper()].copy()
         if "Delta" not in df.columns or df["Delta"].isna().all():
             raise ValueError("Unable to compute Delta for DELTA_RANGE mode")
         lo = float(params.get("lower", 0))
@@ -250,6 +250,6 @@ def select_strike(chain: pd.DataFrame, option_type: str, atm_price: float,
             sel = cand.sort_values("abs_delta", ascending=False).iloc[0]
         else:  # BUY
             sel = cand.sort_values("abs_delta", ascending=True).iloc[0]
-        return float(sel["Strike"])
+        return float(sel["strike"])
 
     raise NotImplementedError(f"Unsupported strike mode: {mode}")

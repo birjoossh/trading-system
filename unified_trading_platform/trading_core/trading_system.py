@@ -10,9 +10,11 @@ import pandas as pd
 from unified_trading_platform.trading_core.utils import get_logger
 
 from unified_trading_platform.trading_core.brokers.broker_factory import BrokerFactory
-from unified_trading_platform.trading_core.brokers.base_broker import Contract, Order, OrderType, OrderAction, SecurityType
 from unified_trading_platform.trading_core.data.data_manager import DataManager
 from unified_trading_platform.trading_core.orders.order_manager import OrderManager
+from unified_trading_platform.trading_core.data_models import (
+    Contract, Order, OrderType, OrderAction, SecurityType, TickData, OptionChain
+)
 
 class TradingSystem:
     """Main trading system class"""
@@ -77,7 +79,7 @@ class TradingSystem:
     def get_historical_data(self, symbol: str, exchange: str,
                           security_type: str = "STK", currency: str = "USD",
                           duration: str = "1 D", bar_size: str = "1H",
-                          broker_name: Optional[str] = None) -> pd.DataFrame:
+                          broker_name: Optional[str] = None) -> List[TickData]:
         """Get historical data for a symbol"""
         contract = Contract(
             symbol=symbol,
@@ -105,7 +107,7 @@ class TradingSystem:
             contract, callback, broker_name
         )
     
-    def get_option_chain(self, broker_name: str, contract: Contract):
+    def get_option_chain(self, broker_name: str, contract: Contract) -> OptionChain:
         return self.data_manager.get_option_chain(broker_name, contract)
 
     def submit_market_order(self, symbol: str, exchange: str, action: str,
