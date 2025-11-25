@@ -1,7 +1,15 @@
+"""
+JioH5Adapter: Adapter for Jio HDF5 data format.
+
+This module provides an interface to read and process HDF5 files containing
+market data in the Jio format, including tick data, spot prices, and options data.
+"""
 from __future__ import annotations
-from datetime import datetime
+
+from datetime import datetime, date
 from pathlib import Path
-from click import DateTime
+from typing import Dict, List, Optional, Tuple, Union
+
 import pandas as pd
 
 class JioH5Adapter:
@@ -106,8 +114,25 @@ class JioH5Adapter:
         opt = df[df["OptionType"].isin(["CE","PE"]) & df["Strike"].notna()].copy()
         if "Expiry" not in opt.columns: opt["Expiry"] = pd.NaT
         opt["Timestamp"] = opt.index.floor("1min")
-        return (opt.groupby(["Timestamp","OptionType","Strike","Expiry"])["Close"]   
-                   .last().reset_index().set_index("Timestamp").sort_index())
+        opt["Exchange"] = "NSE"
+        # Resample and aggregate
+        result = (opt
+            .groupby(["tsym", "OptionType", "Strike", "Expiry", pd.Grouper(freq='1min')], observed=True)
+            .agg({
+                'price': 'last',  # Last price
+                'volume': 'sum',  # Sum of volume
+                'lot': 'last',  # Keep the last lot size
+                'Exchange': 'last'
+            })
+            .reset_index()
+            .rename(columns={
+                'tsym': 'Symbol',
+                'level_4': 'timestamp'
+            })
+        )
+        result.index = result['timestamp']
+        return result[['Symbol', 'OptionType', 'Strike', 'Expiry', 'price', 'volume', 'lot', 'Exchange']]
+
     
     def spot_ohlc(self,bar_length:str) -> pd.DataFrame:
         df = self._read_tick()
@@ -134,26 +159,38 @@ class JioH5Adapter:
         }).dropna()
         return ohlc
     
-    def hist_ohlc(self,ticker:str = None, strike:int = None, opt_type:str = None, expiry:str = None, bar_length:str = '1min') -> pd.DataFrame:
+    def hist_ohlc(self, ticker:str = None, exchange:str = None, strike:int = None, opt_type:str = None, expiry:str = None, bar_length:str = '1min') -> pd.DataFrame:
         df = self._read_tick()
+
+        df["exchange"] = "NSE" #fixme: this should be configurable
+
         if "tsym" not in df.columns:
             raise ValueError("tick_data lacks trading symbol column")
         if ticker != None:
             base = df[df["tsym"] == ticker].copy()
-        else:
-            expiry = pd.to_datetime(expiry,format='mixed').date()
-            base = df[df['strike'] == stirke) && (df['type'] == opt_type) && (df['expiry'] == expiry)].copy()
+        
+        if exchange != None:
+            base = df[df["exchange"] == exchange].copy()
+        
+        # else:
+        #     expiry = pd.to_datetime(expiry,format='mixed').date()
+        #     base = df[(df['strike'] == strike) and (df['type'] == opt_type) and (df['expiry'] == expiry)].copy()
         if base.empty:
-            raise ValueError(f'tick data lacks data for {ticker} ticker')
+            return pd.DataFrame()
 
         ohlc = base['price'].resample(bar_length).agg({
             "open":  "first",
             "high":  "max",
             "low":   "min",
-            "close": "last"
+            "close": "last",
+            "volume": "sum"
         }).dropna()
+
         ohlc['Contract'] = ticker
         ## To Do; may need to add volumne and OI
+        
+        ohlc = ohlc.reset_index()
+        ohlc.rename(columns={'index': 'timestamp'}, inplace=True)
         return ohlc
     
     def tick_df(self, ticker:str = None, strike:int = None, opt_type:str = None, expiry:str = None) -> pd.DataFrame:
@@ -162,7 +199,7 @@ class JioH5Adapter:
             base = df[df["tsym"] == ticker].copy()
         else:
             expiry = pd.to_datetime(expiry,format='mixed').date()
-            base = df[df['strike'] == stirke) && (df['type'] == opt_type) && (df['expiry'] == expiry)].copy()
+            base = df[(df['strike'] == stirke) and (df['type'] == opt_type) and (df['expiry'] == expiry)].copy()
         if base.empty:
             raise ValueError(f'tick data lacks data for {ticker} ticker')
         

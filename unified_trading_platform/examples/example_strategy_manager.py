@@ -12,16 +12,21 @@ def live_trading_example():
     """Example of live trading with StrategyManager"""
     logger.info("=== Live Trading Example ===")
     
+    paper_config = {
+        "h5_path": "/Users/birjoossh/PycharmProjects/trading-system/unified_trading_platform/examples/2024-01-02.h5"
+    }
     # Create strategy manager for live trading
     manager = StrategyManager(
-        venue="interactive_brokers",  # Use paper trading broker
-        strategy_name="atm_short_straddle_1100_1515"
+        venue="paper",  # Use paper trading broker
+        strategy_name="atm_short_straddle_1100_1515",
+        start_date="2024-01-01",
+        end_date="2024-12-31"
     )
     
     try:
         # Initialize the manager
         logger.info("Initializing strategy manager...")
-        if manager.initialize():
+        if manager.initialize(paper_config):
             logger.info("✓ Strategy manager initialized successfully")
             logger.info(f"Run ID: {manager.run_id}")
             logger.info(f"Strategy: {manager.strategy_name}")
@@ -31,13 +36,11 @@ def live_trading_example():
             return
         
         # Start live trading
-        logger.info("Starting live trading..........")
+        logger.info("Starting ..........")
         if manager.start():
-            logger.info("✓ Live trading started")
-            
             # Let it run for a while (in real usage, this would be until exit_time)
             import time
-            time.sleep(10)  # Run for 10 seconds as example
+            time.sleep(1000)  # Run for 10 seconds as example
             
             # Stop trading
             logger.info("Stopping trading...")

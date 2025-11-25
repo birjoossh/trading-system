@@ -138,7 +138,7 @@ def compute_iv_delta_for_chain(
     """Return a copy of `chain` with **IV** and **Delta** columns populated.
 
     Requirements:
-      - chain has columns: [OptionType (CE/PE), Strike, Close]
+      - chain has columns: [option_type (CE/PE), Strike, Close]
       - S: underlying level at `now_dt` (your chosen snapshot/decision time)
       - expiry_dt: datetime of option expiration (use 15:30 IST on the expiry day for NSE)
 
@@ -151,7 +151,7 @@ def compute_iv_delta_for_chain(
         return df.assign(IV=pd.Series(dtype=float), Delta=pd.Series(dtype=float))
 
     # Normalize column names/types
-    df["OptionType"] = df["OptionType"].astype(str).str.upper()
+    df["option_type"] = df["option_type"].astype(str).str.upper()
     df["Strike"] = df["Strike"].astype(float)
     df["Close"] = df["Close"].astype(float)
 
@@ -163,7 +163,7 @@ def compute_iv_delta_for_chain(
     iv_out = []
     delta_out = []
     for _, row in df.iterrows():
-        cp = 'C' if row["OptionType"] == 'CE' else 'P'
+        cp = 'C' if row["option_type"] == 'CE' else 'P'
         K = float(row["Strike"])
         P = float(row["Close"])
         if P < min_price:

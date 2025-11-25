@@ -8,15 +8,15 @@ from typing import List
 from datetime import datetime
 import pandas as pd
 from unified_trading_platform.runtime import get_trading_system
+from unified_trading_platform.trading_core.brokers.base_broker import OptionChain
 from ..models import (
     HistoricalDataRequest,
     HistoricalDataResponse,
-    BarData,
     OptionChainRequest,
-    OptionChainInfo,
     MarketDataSubscriptionRequest,
     MarketDataSubscriptionResponse,
     ErrorResponse,
+    OptionChainResponse,
 )
 
 router = APIRouter()
@@ -36,55 +36,12 @@ def get_historical_data(req: HistoricalDataRequest):
             bar_size=req.bar_size,
             broker_name=req.broker_name,
         )
-
-        if df.empty:
-            return HistoricalDataResponse(
-                symbol=req.symbol,
-                exchange=req.exchange,
-                bar_size=req.bar_size,
-                rows=0,
-                data=[],
-                start_time=None,
-                end_time=None,
-            )
-
-        # Convert DataFrame to list of BarData
-        bars = []
-        for idx, row in df.iterrows():
-            timestamp = idx if isinstance(idx, datetime) else pd.to_datetime(idx)
-            bars.append(
-                BarData(
-                    timestamp=timestamp,
-                    open=float(row.get("open", 0)),
-                    high=float(row.get("high", 0)),
-                    low=float(row.get("low", 0)),
-                    close=float(row.get("close", 0)),
-                    volume=int(row.get("volume", 0)),
-                )
-            )
-
-        start_time = df.index[0] if len(df) > 0 else None
-        end_time = df.index[-1] if len(df) > 0 else None
-
-        if not isinstance(start_time, datetime):
-            start_time = pd.to_datetime(start_time) if start_time is not None else None
-        if not isinstance(end_time, datetime):
-            end_time = pd.to_datetime(end_time) if end_time is not None else None
-
-        return HistoricalDataResponse(
-            symbol=req.symbol,
-            exchange=req.exchange,
-            bar_size=req.bar_size,
-            rows=len(df),
-            data=bars,
-            start_time=start_time,
-            end_time=end_time,
-        )
+        return HistoricalDataResponse.from_domain(df)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/option-chain", response_model=OptionChainInfo)
+@router.post("/option-chain", response_model=OptionChainResponse)
 def get_option_chain(req: OptionChainRequest):
     """Get option chain for an underlying symbol"""
     ts = get_trading_system()
@@ -93,31 +50,11 @@ def get_option_chain(req: OptionChainRequest):
 
         contract = Contract(
             symbol=req.symbol,
-            security_type=req.security_type,
             exchange=req.exchange,
-            currency=req.currency,
+            expiry=req.expiry
         )
-
         option_chain = ts.get_option_chain(req.broker_name, contract)
-
-        if hasattr(option_chain, "underlying_symbol"):
-            # OptionChain dataclass
-            from dataclasses import asdict
-
-            chain_dict = asdict(option_chain)
-            return OptionChainInfo(
-                underlying_symbol=chain_dict.get("underlying_symbol", req.symbol),
-                expiration_dates=chain_dict.get("expiration_dates", []),
-                strikes=chain_dict.get("strikes", []),
-                trading_class=chain_dict.get("trading_class"),
-                tick_size=chain_dict.get("tick_size"),
-                last_updated=chain_dict.get("last_updated"),
-            )
-        else:
-            # DataFrame or other format
-            return OptionChainInfo(
-                underlying_symbol=req.symbol, expiration_dates=[], strikes=[]
-            )
+        return OptionChainResponse.from_domain(option_chain)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

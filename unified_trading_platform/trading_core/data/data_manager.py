@@ -8,10 +8,12 @@ from typing import List, Dict, Optional, Callable
 from datetime import datetime, timedelta
 from dataclasses import asdict
 import sqlite3
-import json
 
 from unified_trading_platform.trading_core.utils import get_logger
-from unified_trading_platform.trading_core.brokers.base_broker import BrokerInterface, Contract, BarData, TickData
+from unified_trading_platform.trading_core.data_models import (
+    TickData, OptionChain, Contract
+)
+from unified_trading_platform.trading_core.brokers.base_broker import BrokerInterface
 
 # Initialize logger
 logger = get_logger(__name__)
@@ -60,14 +62,9 @@ class DataManager:
                 )
             """)
 
-    def _get_broker(self, name: str):
+    def _get_broker(self, name: str) -> BrokerInterface:
         """Add a broker for data retrieval"""
         return self.brokers[name]
-
-    def _bars_to_dataframe(self, bars: List[BarData]):
-        df = pd.DataFrame([asdict(bar) for bar in bars])
-        df.set_index('timestamp', inplace=True)
-        return df
 
     def add_broker(self, name: str, broker: BrokerInterface):
         """Add a broker for data retrieval"""
@@ -102,10 +99,9 @@ class DataManager:
             self._cache_bars(bars)
         return bars  # Should already be List[TickData] from broker
 
-    def get_option_chain(self, broker_name: Optional[str] = None, contract: Contract = None) -> pd.DataFrame:
+    def get_option_chain(self, broker_name: Optional[str] = None, contract: Contract = None) -> OptionChain:
         broker = self._get_broker(broker_name)
-        option_chain = broker.get_option_chain(contract)
-        return option_chain
+        return broker.get_option_chain(contract)
 
     def _cache_bars(self, bars: List[TickData]):
         """Cache a list of TickData objects to the database
@@ -238,7 +234,7 @@ class DataManager:
                     tick_data.security_type.value,
                     tick_data.symbol,
                     tick_data.currency,
-                    tick_data.timestamp,
+                    tick_data.timestamp.isoformat(),
                     tick_data.bid,
                     tick_data.ask,
                     tick_data.last,

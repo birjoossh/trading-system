@@ -5,7 +5,7 @@ Supports multiple brokers through a unified interface.
 
 import logging
 from typing import Dict, Type
-from .base_broker import BrokerInterface
+from unified_trading_platform.trading_core.brokers.base_broker import BrokerInterface
 from unified_trading_platform.trading_core.utils import get_logger
 
 # Initialize logger
@@ -24,7 +24,7 @@ class BrokerFactory:
     @classmethod
     def create_broker(cls, name: str, **kwargs) -> BrokerInterface:
         """Create a broker instance"""
-        logger.debug(f"Available brokers: {list(cls._brokers.keys())}, requested: {name}")
+        logger.debug(f"Available brokers: {list(cls._brokers)}, requested: {name}")
         if name not in cls._brokers:
             available = ', '.join(cls._brokers.keys())
             error_msg = f"Broker '{name}' not found. Available: {available}"
@@ -43,6 +43,7 @@ class BrokerFactory:
 # Register Interactive Brokers
 try:
     from .interactive_brokers.ib_broker import IBBroker
+    logger.info("Registering Interactive Brokers ...")
     BrokerFactory.register_broker('ib', IBBroker)
     BrokerFactory.register_broker('interactive_brokers', IBBroker)
 except ImportError:
@@ -55,7 +56,8 @@ except ImportError:
 
 # Register Paper broker
 try:
-    from .paper_broker import PaperBroker
+    from .paper_broker.paper_broker import PaperBroker
+    logger.info("Registering Paper broker ...")
     BrokerFactory.register_broker('paper', PaperBroker)
 except ImportError:
     logger.warning("Paper broker not available")

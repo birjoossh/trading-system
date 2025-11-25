@@ -18,30 +18,16 @@ from unified_trading_platform.trading_core.utils import get_logger
 logger = get_logger(__name__)
 
 from unified_trading_platform.trading_core.config.config import Config
-from ..brokers.broker_factory import BrokerFactory
-from ..brokers.base_broker import (
-    BrokerInterface,
-    Contract,
-    Order,
-    OrderAction,
-    OrderType,
-    TickData,
-    SecurityType,
-    OptionChain
+from unified_trading_platform.trading_core.data_models import (
+    Contract, OptionChain, SecurityType, TickData, ManagedOrder, Order, OrderAction
 )
-from ..orders.order_manager import OrderManager, ManagedOrder
-from ..data.data_manager import DataManager
-from .config import load_strategy_config, StrategyConfig
-from .live_engine import UnifiedStrategyEngine, OrderSignal
-from ...database.db_utils import (
-    init_strategy_tables,
-    create_run_config,
-    update_run_status,
-    save_portfolio_snapshot,
-    save_pnl_snapshot,
-)
-from unified_trading_platform.trading_core.main import TradingSystem
+from unified_trading_platform.trading_core.strategy_engine.config import load_strategy_config, StrategyConfig
+from unified_trading_platform.trading_core.strategy_engine.live_engine import UnifiedStrategyEngine, OrderSignal
+from unified_trading_platform.trading_core.trading_system import TradingSystem
 from unified_trading_platform.trading_core.config.config import Config
+from unified_trading_platform.trading_core.database.db_utils import (
+    init_strategy_tables, create_run_config, update_run_status, save_portfolio_snapshot, save_pnl_snapshot,
+)
 
 class StrategyManager:
     """Main orchestrator for strategy execution"""
@@ -52,15 +38,13 @@ class StrategyManager:
         strategy_name: str,
         start_date: Optional[str] = None,
         end_date: Optional[str] = None,
-        db_path: str = "trading_system.db",
+        db_path: str = "trading_system.db"
     ):
         self.venue = venue
         self.strategy_name = strategy_name
         self.start_date = start_date
         self.end_date = end_date
         self.db_path = db_path
-
-        self.config = Config()
 
         # Core components
         self.trading_system = TradingSystem()
@@ -87,7 +71,9 @@ class StrategyManager:
         # Initialize database tables
         init_strategy_tables(db_path)
 
-    def initialize(self) -> bool:
+
+    ## fixme: additional config should not be passed here
+    def initialize(self, additional_config: Optional[Dict]) -> bool:
         """Initialize the strategy manager"""
         logger.debug("Starting initialization of StrategyManager")
         try:
@@ -112,7 +98,8 @@ class StrategyManager:
                 broker_type=exch_config.get("broker_type", self.venue),
                 host=exch_config.get("host"),
                 port=exch_config.get("port"),
-                client_id=exch_config.get("client_id", 1)
+                client_id=exch_config.get("client_id", 1),
+                **additional_config
             )
 
             # Register order callbacks
@@ -233,24 +220,50 @@ class StrategyManager:
         Create a simplified DataFrame from an OptionChain.
         Each row represents a strike/expiry combination.
         """
-        option_chain_dict = asdict(option_chain)
-        # Create all combinations of expiries and strikes
-        expiries = option_chain_dict['expiration_dates']
-        strikes = option_chain_dict['strikes']
-        
-        # Create a row for each combination
+        if option_chain is None:
+            return pd.DataFrame()
+            
         rows = []
-        for expiry in expiries:
-            for strike in strikes:
-                rows.append({
-                    'underlying_symbol': option_chain_dict['underlying_symbol'],
-                    'expiry': expiry,
-                    'strike': strike,
-                    'trading_class': option_chain_dict['trading_class'],
-                    'tick_size': option_chain_dict['tick_size'],
-                    'last_updated': option_chain_dict['last_updated']
-                })
-        return pd.DataFrame(rows)
+        
+        # Extract underlying symbol from the contract
+        underlying_symbol = option_chain.contract.symbol if hasattr(option_chain, 'contract') else ''
+        
+        # Process each expiry group
+        for expiry_group in option_chain.expiration_dates:
+            expiry_date = expiry_group.expiry_date
+            
+            # Process each strike in the expiry group
+            for strike_group in expiry_group.strikes:
+                strike_price = strike_group.strike_price
+                
+                # Add call option if exists
+                if strike_group.call_option:
+                    call = strike_group.call_option
+                    rows.append({
+                        'underlying_symbol': underlying_symbol,
+                        'expiry': expiry_date,
+                        'strike': strike_price,
+                        'option_type': 'CE',
+                        'price': call.ltp,
+                        'lot': call.lot,
+                        'last_updated': call.last_updated
+                    })
+                
+                # Add put option if exists
+                if strike_group.put_option:
+                    put = strike_group.put_option
+                    rows.append({
+                        'underlying_symbol': underlying_symbol,
+                        'expiry': expiry_date,
+                        'strike': strike_price,
+                        'option_type': 'PE',
+                        'price': put.ltp,
+                        'lot': put.lot,
+                        'last_updated': put.last_updated
+                    })
+        
+        # Create and return the DataFrame
+        return pd.DataFrame(rows) if rows else pd.DataFrame()
 
     def _process_tick(self, tick_data: TickData):
         """Process a single tick"""
@@ -259,9 +272,10 @@ class StrategyManager:
             underlying_price = self._get_underlying_price(tick_data)
 
             # Get option chain if needed
-            option_chain = self._get_option_chain(tick_data.timestamp)
+            option_chain = self._get_option_chain(tick_data)
+            logger.info("Option chain: {option_chain}")
             df_option_chain = self.option_chain_to_df(option_chain)
-            logger.debug(f"Option chain data: {df_option_chain.to_string()}")
+            logger.info(f"Option chain data: {df_option_chain.to_string()}")
 
             # Process with strategy engine
             signals = self.strategy_engine.process_tick( tick_data, underlying_price, df_option_chain)
@@ -351,8 +365,8 @@ class StrategyManager:
                 high=tick.high,
                 low=tick.low,
                 volume=tick.volume,
-                open_interest=tick.open_interest,
-                vwap=tick.vwap,
+                open_interest=tick.open_interest
+                #vwap=tick.vwap, #fixme: vwap not supported for backtesting
             )
             # Process the tick
             self._process_tick(tick_data)
@@ -368,7 +382,15 @@ class StrategyManager:
         duration_days = (end_dt - start_dt).days
 
         # Get historical data
-        historical_data = self.trading_system.data_manager.get_historical_data(contract, f"{duration_days} D", "1 min", self.venue)
+        historical_data = self.trading_system.get_historical_data(
+            symbol="NIFTY 50",
+            exchange="NSE",
+            security_type="STK",
+            currency="INR",
+            duration=f"{duration_days} D", 
+            bar_size="1H", 
+            broker_name=self.venue
+        )
 
         return historical_data
 
@@ -385,11 +407,12 @@ class StrategyManager:
         # This would typically query the broker for current price
         return 0.0  # Placeholder
 
-    def _get_option_chain(self, timestamp: pd.Timestamp) -> Optional[pd.DataFrame]:
+    def _get_option_chain(self, tick_data: TickData) -> OptionChain:
         """Get option chain for given timestamp"""
         #fixme: placeholder args for now
-        contract = Contract(symbol="SPY", security_type=SecurityType.STOCK, exchange="", currency="USD", conId=756733)
-        logger.debug(f"Fetching option chain for contract: {contract}")
+        contract = Contract(symbol=tick_data.symbol, security_type=tick_data.security_type, exchange=tick_data.exchange, \
+            currency=tick_data.currency, conId=756733)
+        logger.info(f"Fetching option chain for contract: {contract}")
         # TODO: This should be for the specified timestamp. Right now we don't have an implementation for that
         return self.trading_system.get_option_chain(self.venue, contract) 
 
@@ -397,7 +420,7 @@ class StrategyManager:
         """Get initial portfolio from broker"""
         try:
             positions = self.trading_system.get_positions()
-            account_info = self.trading_system.get_account_info()
+            account_info = self.trading_system.get_account_info(self.venue)
 
             return {
                 "positions": positions,

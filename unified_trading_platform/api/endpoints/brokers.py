@@ -13,9 +13,12 @@ from ..models import (
     SuccessResponse,
     ErrorResponse,
 )
+from unified_trading_platform.trading_core.utils import get_logger
+
+# Initialize logger
+logger = get_logger(__name__)
 
 router = APIRouter()
-
 
 @router.get(
     "",
@@ -120,6 +123,7 @@ def add_broker(req: AddBrokerRequest):
     description="Remove and disconnect a broker from the trading system",
     responses={
         200: {"description": "Broker removed successfully"},
+        400: {"description": "Failed to disconnect broker", "model": ErrorResponse},
         404: {"description": "Broker not found", "model": ErrorResponse},
         500: {"description": "Internal server error", "model": ErrorResponse},
     },
@@ -135,17 +139,54 @@ def remove_broker(broker_name: str):
         SuccessResponse: Success message if broker was removed
 
     Raises:
-        HTTPException: 404 if broker not found, 500 for server errors
+        HTTPException: 400 if disconnection fails, 404 if broker not found, 500 for server errors
     """
     ts = get_trading_system()
+    
+    # Check if broker exists
     if broker_name not in ts.brokers:
-        raise HTTPException(status_code=404, detail=f"Broker '{broker_name}' not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Broker '{broker_name}' not found"
+        )
 
     try:
-        ts.remove_broker(broker_name)
-        return SuccessResponse(message=f"Broker '{broker_name}' removed successfully")
+        # Get the broker instance
+        broker = ts.brokers[broker_name]
+        
+        # Disconnect the broker if it's connected
+        if hasattr(broker, 'is_connected') and broker.is_connected:
+            try:
+                broker.disconnect()
+            except Exception as e:
+                logger.error(f"Error disconnecting broker {broker_name}: {str(e)}")
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Failed to disconnect broker: {str(e)}"
+                )
+        
+        # Remove the broker from the trading system
+        removed = ts.remove_broker(broker_name)
+        if not removed:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to remove broker {broker_name}"
+            )
+            
+        logger.info(f"Successfully removed broker: {broker_name}")
+        return SuccessResponse(
+            success=True,
+            message=f"Successfully removed broker: {broker_name}"
+        )
+        
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.exception(f"Error removing broker {broker_name}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Internal server error: {str(e)}"
+        )
 
 
 @router.get(
@@ -178,7 +219,7 @@ def get_broker_info(broker_name: str):
     broker = ts.brokers[broker_name]
     return BrokerInfo(
         name=broker_name,
-        broker_type=type(broker).__name__,
+        broker_type=type(broker).__name__, # fixme: fix this
         is_connected=broker.is_connected,
         host=getattr(broker, "host", None),
         port=getattr(broker, "port", None),

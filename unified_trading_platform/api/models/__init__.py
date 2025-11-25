@@ -8,10 +8,9 @@ from .broker import AddBrokerRequest, BrokerInfo, AccountInfo
 from .contract import ContractRequest, ContractInfo
 from .data import (
     HistoricalDataRequest,
-    BarData,
     HistoricalDataResponse,
     OptionChainRequest,
-    OptionChainInfo,
+    OptionChainResponse,
     MarketDataSubscriptionRequest,
     MarketDataSubscriptionResponse,
 )
@@ -45,9 +44,9 @@ __all__ = [
     "ContractInfo",
     # Data models
     "HistoricalDataRequest",
-    "BarData",
     "HistoricalDataResponse",
     "OptionChainRequest",
+    "OptionChainResponse",
     "OptionChainInfo",
     "MarketDataSubscriptionRequest",
     "MarketDataSubscriptionResponse",

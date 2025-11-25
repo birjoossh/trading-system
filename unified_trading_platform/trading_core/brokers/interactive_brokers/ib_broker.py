@@ -24,11 +24,11 @@ except ImportError:
     IB_AVAILABLE = False
     logger.warning("IB API not available. Install with: pip install ibapi")
 
-from ..base_broker import (
-    BrokerInterface, Contract, Order, Trade, BarData, TickData,
-    OrderType, OrderAction, OrderStatus, SecurityType, OptionRight,
-    MarketDataType, TickType, MarketDataSubscription, MarketDataError,
-    OptionChain, Greeks
+from unified_trading_platform.trading_core.brokers import BrokerInterface
+from unified_trading_platform.trading_core.data_models import (
+    Contract, Order, Trade, TickData, OrderType, OrderAction, 
+    OrderStatus, SecurityType, MarketDataType, TickType, OptionChain, Greeks, 
+    MarketDataSubscription, MarketDataError
 )
 
 class IBBroker(BrokerInterface):
@@ -137,20 +137,10 @@ class IBBroker(BrokerInterface):
             ib_contract.right = contract.right.value
         if contract.multiplier:
             ib_contract.multiplier = contract.multiplier
-        if contract.trading_class:
-            ib_contract.tradingClass = contract.trading_class
         if contract.primary_exchange:
             ib_contract.primaryExchange = contract.primary_exchange
         if contract.include_expired:
             ib_contract.includeExpired = contract.include_expired
-        if contract.sec_id_type:
-            ib_contract.secIdType = contract.sec_id_type
-        if contract.sec_id:
-            ib_contract.secId = contract.sec_id
-        if contract.combo_legs:
-            ib_contract.comboLegs = contract.combo_legs
-        if contract.combo_legs_descrip:
-            ib_contract.comboLegsDescrip = contract.combo_legs_descrip
 
         # Debug output for options
         if contract.security_type == SecurityType.OPTION:
@@ -186,7 +176,7 @@ class IBBroker(BrokerInterface):
         return ib_order
 
     def get_historical_data(self, contract: Contract, duration: str,
-                          bar_size: str, what_to_show: str = "TRADES") -> List[BarData]:
+                          bar_size: str, what_to_show: str = "TRADES") -> List[TickData]:
         """Get historical bar data"""
         if not self.is_connected:
             raise Exception("Not connected to broker")
@@ -209,12 +199,16 @@ class IBBroker(BrokerInterface):
             while len(self.historical_data[req_id]) == 0 and (time.time() - start_time) < timeout:
                 time.sleep(1) # sleep 1 sec
 
-            # Convert to our BarData format
+            # Convert to our TickData format
             bars = []
             for bar in self.historical_data[req_id]:
                 try:
-                    bar_data = BarData(
+                    bar_data = TickData(
                         timestamp=datetime.strptime(bar.date, "%Y%m%d %H:%M:%S"),
+                        exchange=contract.exchange,
+                        symbol=contract.symbol,
+                        security_type=contract.security_type,
+                        currency=contract.currency,
                         open=bar.open,
                         high=bar.high,
                         low=bar.low,
@@ -467,7 +461,9 @@ class IBBroker(BrokerInterface):
             }
             logger.debug(f"underlying conId = {underlying_contract.conId if hasattr(underlying_contract, 'conId') else 0}")
             # Request option chain
-            self.client.reqSecDefOptParams(req_id, underlying_contract.symbol, underlying_contract.exchange, underlying_contract.security_type.value, underlying_contract.conId if hasattr(underlying_contract, 'conId') else 0)
+            self.client.reqSecDefOptParams(req_id, underlying_contract.symbol, underlying_contract.exchange, \
+                    underlying_contract.security_type.value, underlying_contract.conId \
+                        if hasattr(underlying_contract, 'conId') else 0)
 
             # Wait for response till timeout
             if not response_received.wait(timeout=20):
@@ -758,7 +754,6 @@ class IBClient(EWrapper, EClient):
                 underlying_contract=underlying_contract,
                 expiration_dates=expiration_dates,
                 strikes=strike_prices,
-                trading_class=tradingClass,
                 tick_size=multiplier,
                 options=[]  # Individual option contracts would be created separately
             )
