@@ -5,8 +5,8 @@ This module defines the Contract class which represents a financial instrument.
 """
 
 from dataclasses import dataclass, field
-from typing import Optional, List, Dict, Any
-
+from typing import Optional, Dict, Any
+from .option_right_enum import OptionRight
 from .security_type_enum import SecurityType
 
 @dataclass
@@ -19,15 +19,10 @@ class Contract:
     local_symbol: Optional[str] = None
     expiry: Optional[str] = None
     strike: Optional[float] = None
-    right: Optional[str] = None  # 'CALL', 'PUT', or None for non-options
+    option_right: Optional[OptionRight] = None
     multiplier: Optional[float] = None
-    trading_class: Optional[str] = None
     primary_exchange: Optional[str] = None
     include_expired: bool = False
-    sec_id_type: Optional[str] = None
-    sec_id: Optional[str] = None
-    combo_legs: List[Dict[str, Any]] = field(default_factory=list)
-    combo_legs_descrip: Optional[str] = None
     conId: int = 0
 
     def to_dict(self) -> Dict[str, Any]:
@@ -42,13 +37,8 @@ class Contract:
             'strike': self.strike,
             'right': self.right,
             'multiplier': self.multiplier,
-            'trading_class': self.trading_class,
             'primary_exchange': self.primary_exchange,
             'include_expired': self.include_expired,
-            'sec_id_type': self.sec_id_type,
-            'sec_id': self.sec_id,
-            'combo_legs': self.combo_legs,
-            'combo_legs_descrip': self.combo_legs_descrip,
             'conId': self.conId
         }
 

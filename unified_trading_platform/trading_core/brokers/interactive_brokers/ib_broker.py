@@ -137,20 +137,10 @@ class IBBroker(BrokerInterface):
             ib_contract.right = contract.right.value
         if contract.multiplier:
             ib_contract.multiplier = contract.multiplier
-        if contract.trading_class:
-            ib_contract.tradingClass = contract.trading_class
         if contract.primary_exchange:
             ib_contract.primaryExchange = contract.primary_exchange
         if contract.include_expired:
             ib_contract.includeExpired = contract.include_expired
-        if contract.sec_id_type:
-            ib_contract.secIdType = contract.sec_id_type
-        if contract.sec_id:
-            ib_contract.secId = contract.sec_id
-        if contract.combo_legs:
-            ib_contract.comboLegs = contract.combo_legs
-        if contract.combo_legs_descrip:
-            ib_contract.comboLegsDescrip = contract.combo_legs_descrip
 
         # Debug output for options
         if contract.security_type == SecurityType.OPTION:
@@ -764,7 +754,6 @@ class IBClient(EWrapper, EClient):
                 underlying_contract=underlying_contract,
                 expiration_dates=expiration_dates,
                 strikes=strike_prices,
-                trading_class=tradingClass,
                 tick_size=multiplier,
                 options=[]  # Individual option contracts would be created separately
             )

@@ -13,11 +13,7 @@ from typing import Dict, Any
 class AccountSummary:
     """Represents a summary of an account's status."""
     account_id: str
-    account_type: str
-    net_liquidation_value: Decimal
     total_cash_value: Decimal
-    settled_cash: Decimal
-    buying_power: Decimal
     equity_with_loan: Decimal
     previous_equity: Decimal
     previous_equity_date: datetime

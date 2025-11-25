@@ -12,7 +12,6 @@ from .contract import Contract
 @dataclass
 class Position:
     """Represents a trading position in the market."""
-    contract: Contract
     position: float  # Positive for long, negative for short
     average_cost: float
     market_price: float

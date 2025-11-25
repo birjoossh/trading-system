@@ -15,7 +15,7 @@ class OptionContract:
     """Represents an option contract with pricing and greeks."""
     option_ticker: str
     ltp: float  # Last traded price
-    type: OptionRight
+    option_right: OptionRight
     lot: int = 1
     last_updated: Optional[datetime] = None
     bid: Optional[float] = None
@@ -35,7 +35,7 @@ class OptionContract:
         return {
             'option_ticker': self.option_ticker,
             'ltp': self.ltp,
-            'type': self.type.value,
+            'option_right': self.option_right.value,
             'lot': self.lot,
             'last_updated': self.last_updated.isoformat() if self.last_updated else None,
             'bid': self.bid,

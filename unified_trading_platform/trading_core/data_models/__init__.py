@@ -7,7 +7,6 @@ including enums, dataclasses, and other data structures.
 
 from .contract import Contract
 from .tick_data import TickData
-from .bar_data import BarData
 from .position import Position
 from .order import Order, OrderAction, OrderStatus, OrderType, ManagedOrder
 from .account import AccountSummary
@@ -26,7 +25,6 @@ __all__ = [
     # Core models
     'Contract',
     'TickData',
-    'BarData',
     'Position',
     'Order',
     'OrderAction',

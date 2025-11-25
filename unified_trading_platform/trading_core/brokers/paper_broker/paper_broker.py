@@ -198,7 +198,7 @@ class PaperBroker(BrokerInterface):
                     call_option = OptionContract(
                         option_ticker=latest_call['Symbol'],
                         ltp=float(latest_call['price']),
-                        type=OptionRight.CALL,
+                        option_right=OptionRight.CALL,
                         lot=latest_call['lot'],
                         last_updated=latest_call.name.to_pydatetime()
                     )
@@ -210,7 +210,7 @@ class PaperBroker(BrokerInterface):
                     put_option = OptionContract(
                         option_ticker=latest_put['Symbol'],
                         ltp=float(latest_put['price']),
-                        type=OptionRight.PUT,
+                        option_right=OptionRight.PUT,
                         lot=latest_put['lot'],
                         last_updated=latest_put.name.to_pydatetime()
                     )
