@@ -10,7 +10,7 @@ import sqlite3
 
 from unified_trading_platform.trading_core.utils import get_logger
 from unified_trading_platform.trading_core.data_models import (
-    OrderStatus, ManagedOrder, Contract, Order
+    OrderStatus, ManagedOrder, Contract, Order, Trade
 )
 from unified_trading_platform.trading_core.brokers.base_broker import BrokerInterface
 

@@ -260,7 +260,7 @@ class PaperBroker(BrokerInterface):
         elif self.mode == 'h5':
             ja = JioH5Adapter(self.config.h5_path)
             df = ja.hist_ohlc(ticker=contract.symbol, exchange = contract.exchange, strike=contract.strike, \
-                opt_type=contract.right, expiry=contract.expiry, bar_length=bar_size)
+                opt_type=contract.option_right, expiry=contract.expiry, bar_length=bar_size)
 
         if not df.empty:
             print("df summary", df.head(10))

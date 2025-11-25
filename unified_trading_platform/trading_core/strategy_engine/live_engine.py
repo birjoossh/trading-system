@@ -120,7 +120,7 @@ class UnifiedStrategyEngine:
             currency="INR",  # fixme: fix this
             expiry=leg.expiry_date.strftime("%Y%m%d"),
             strike=leg.strike,
-            right=leg.spec.option_type,
+            option_right=leg.spec.option_type,
             multiplier=str(self.config.lot_size)
         )
         

@@ -9,7 +9,7 @@ from typing import List, Dict, Any, Optional, Callable
 from unified_trading_platform.trading_core.utils import get_logger
 from unified_trading_platform.trading_core.data_models.contract import Contract
 from unified_trading_platform.trading_core.data_models.order import Order
-from unified_trading_platform.trading_core.data_models.bar_data import BarData
+from unified_trading_platform.trading_core.data_models.tick_data import TickData
 from unified_trading_platform.trading_core.data_models.market_datatype_enum import MarketDataType
 from unified_trading_platform.trading_core.data_models.market_data_subscription import MarketDataSubscription
 from unified_trading_platform.trading_core.data_models.option_chain import OptionChain
@@ -38,7 +38,7 @@ class BrokerInterface(ABC):
 
     @abstractmethod
     def get_historical_data(self, contract: Contract, duration: str,
-                          bar_size: str, what_to_show: str = "TRADES") -> List[BarData]:
+                          bar_size: str, what_to_show: str = "TRADES") -> List[TickData]:
         """Get historical bar data"""
         pass
 
