@@ -4,11 +4,12 @@ Demonstrates basic functionality with Interactive Brokers.
 """
 import threading
 import time
-from json import json
+import json
 from datetime import datetime, timedelta
-from unified_trading_platform.trading_core.main import TradingSystem
+from unified_trading_platform.trading_core.trading_system import TradingSystem
 from unified_trading_platform.trading_core.config.config import Config
 from unified_trading_platform.trading_core.utils import get_logger
+from unified_trading_platform.trading_core.data_models import SecurityType
 
 # Initialize logger
 logger = get_logger(__name__)
@@ -62,22 +63,22 @@ def main():
 
     try:
         # Get Historical Data
-        print_section("Getting Historical Data")
+        # print_section("Getting Historical Data")
 
-        logger.info("Fetching historical data for AAPL...")
-        hist_data = trading_system.get_historical_data(
-            symbol="AAPL",
-            exchange="NASDAQ",
-            security_type="STK",
-            currency="USD",
-            duration="5 D",  # 5 days
-            bar_size="1 hour",
-            broker_name="ib"
-        )
-        if not hist_data.empty:
-            logger.info(f"Retrieved {len(hist_data)} bars")
-            logger.info("Latest 5 bars:")
-            logger.info(f"\n{hist_data.tail()}")
+        # logger.info("Fetching historical data for AAPL...")
+        # hist_data = trading_system.get_historical_data(
+        #     symbol="AAPL",
+        #     exchange="NASDAQ",
+        #     security_type=SecurityType.STOCK,
+        #     currency="USD",
+        #     duration="5 D",  # 5 days
+        #     bar_size="1 hour",
+        #     broker_name="ib"
+        # )
+        # if len(hist_data)>0:
+        #     logger.info(f"Retrieved {len(hist_data)} bars")
+        #     logger.info("Latest 5 bars:")
+        #     logger.info(f"\n{hist_data[:-5]}")
 
         # Subscribe to Market Data
         print_section("Subscribing to Market Data")
@@ -91,53 +92,52 @@ def main():
         market_data_thread = threading.Thread(target=start_market_data_subscription, daemon=False)
         market_data_thread.start()
 
-        #Submit Orders
-        print_section("Order Management Examples")
+        # #Submit Orders
+        # print_section("Order Management Examples")
 
-        # Submit a limit buy order
-        logger.info("Submitting limit buy order for 100 AAPL shares...")
-        current_price = hist_data['close'].iloc[-1] if not hist_data.empty else 150.0
-        limit_price = 255.46 #current_price #* 0.99  # 1% below current price
+        # # Submit a limit buy order
+        # logger.info("Submitting limit buy order for 100 AAPL shares...")
+        # limit_price = 255.46 #current_price #* 0.99  # 1% below current price
 
-        buy_order_id = trading_system.submit_limit_order(
-            symbol="AAPL",
-            exchange="SMART",
-            action="BUY",
-            quantity=100,
-            limit_price=limit_price,
-            broker_name="ib"
-        )
-        logger.info(f"Buy order submitted with ID: {buy_order_id}")
+        # buy_order_id = trading_system.submit_limit_order(
+        #     symbol="AAPL",
+        #     exchange="SMART",
+        #     action="BUY",
+        #     quantity=100,
+        #     limit_price=limit_price,
+        #     broker_name="ib"
+        # )
+        # logger.info(f"Buy order submitted with ID: {buy_order_id}")
 
-        # Submit a limit sell order
-        logger.info("Submitting limit sell order for 50 AAPL shares...")
-        sell_limit_price = 255.46 #current_price * 1.01  # 1% above current price
+        # # Submit a limit sell order
+        # logger.info("Submitting limit sell order for 50 AAPL shares...")
+        # sell_limit_price = 255.46 #current_price * 1.01  # 1% above current price
 
-        sell_order_id = trading_system.submit_limit_order(
-            symbol="AAPL",
-            exchange="SMART",
-            action="SELL",
-            quantity=50,
-            limit_price=sell_limit_price,
-            broker_name="ib"
-        )
+        # sell_order_id = trading_system.submit_limit_order(
+        #     symbol="AAPL",
+        #     exchange="SMART",
+        #     action="SELL",
+        #     quantity=50,
+        #     limit_price=sell_limit_price,
+        #     broker_name="ib"
+        # )
 
-        logger.info(f"Sell order submitted with ID: {sell_order_id}")
+        # logger.info(f"Sell order submitted with ID: {sell_order_id}")
 
-        # Wait a moment for order updates
-        time.sleep(3)
+        # # Wait a moment for order updates
+        # time.sleep(3)
 
-        # Check order status
-        logger.info("\nChecking order status...")
-        buy_status = trading_system.get_order_status(buy_order_id)
-        sell_status = trading_system.get_order_status(sell_order_id)
+        # # Check order status
+        # logger.info("\nChecking order status...")
+        # buy_status = trading_system.get_order_status(buy_order_id)
+        # sell_status = trading_system.get_order_status(sell_order_id)
 
-        logger.info(f"Buy Order Status: {buy_status.get('status', 'Unknown')}")
-        logger.info(f"Sell Order Status: {sell_status.get('status', 'Unknown')}")
+        # logger.info(f"Buy Order Status: {buy_status.get('status', 'Unknown')}")
+        # logger.info(f"Sell Order Status: {sell_status.get('status', 'Unknown')}")
 
-        # Get all orders
-        all_orders = trading_system.get_all_orders()
-        logger.info(f"\nTotal orders in system: {len(all_orders)}")
+        # # Get all orders
+        # all_orders = trading_system.get_all_orders()
+        # logger.info(f"\nTotal orders in system: {len(all_orders)}")
 
         # # Example 4: Cancel Orders
         # print_section("Cancelling Orders")
@@ -151,21 +151,22 @@ def main():
         # print(f"Cancel result: {'Success' if cancel_success else 'Failed'}")
 
         # Account Information
-        print_section("Account Information")
+        # print_section("Account Information")
 
-        account_info = trading_system.get_account_info("ib")
-        if account_info:
-            logger.info(f"Account Information: ${json.dump()}")
+        # account_info = trading_system.get_account_info("ib")
+        # if account_info:
+        #     logger.info(f"Account Information: ${json.dump()}")
 
-        # Positions
-        positions = trading_system.get_positions()
-        logger.info(f"\nCurrent Positions: {json.dump(positions)}")
+        # # Positions
+        # positions = trading_system.get_positions()
+        # logger.info(f"\nCurrent Positions: {json.dumps(positions)}")
        
-        # Order History
-        print_section("Order History")
-        order_history = trading_system.get_order_history()
-        logger.info(f"All orders in history: {json.dump(order_history)}")
+        # # Order History
+        # print_section("Order History")
+        # order_history = trading_system.get_order_history()
+        #logger.info(f"All orders in history: {json.dumps(order_history)}")
 
+        time.sleep(15)
         market_data_thread.join()
 
     except Exception as e:

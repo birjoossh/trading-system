@@ -39,7 +39,7 @@ class TradingSystem:
         try:
             self.logger.info(f"Creating broker of type: {broker_type}")
             # Create broker instance with required parameters
-            if broker_type.lower() == 'interactive_brokers':
+            if broker_type.lower() == 'interactive_brokers' or broker_type.lower() == 'ib':
                 host = config.get('host', '127.0.0.1')
                 port = config.get('port', 7497)  # Default paper trading port
                 client_id = config.get('client_id', 1)
@@ -102,7 +102,6 @@ class TradingSystem:
             exchange=exchange,
             currency=currency
         )
-
         return self.data_manager.subscribe_real_time_data(
             contract, callback, broker_name
         )

@@ -41,13 +41,13 @@ class BrokerFactory:
         return list(cls._brokers.keys())
 
 # Register Interactive Brokers
-try:
-    from .interactive_brokers.ib_broker import IBBroker
-    logger.info("Registering Interactive Brokers ...")
-    BrokerFactory.register_broker('ib', IBBroker)
-    BrokerFactory.register_broker('interactive_brokers', IBBroker)
-except ImportError:
-    logger.warning("Interactive Brokers not available")
+# try:
+from unified_trading_platform.trading_core.brokers.interactive_brokers.ib_broker import IBBroker
+logger.info("Registering Interactive Brokers ...")
+BrokerFactory.register_broker('ib', IBBroker)
+BrokerFactory.register_broker('interactive_brokers', IBBroker)
+# except ImportError:
+#     logger.warning("Interactive Brokers not available")
 
 # TODO: Add other brokers here
 # BrokerFactory.register_broker('alpaca', AlpacaBroker)
@@ -56,7 +56,7 @@ except ImportError:
 
 # Register Paper broker
 try:
-    from .paper_broker.paper_broker import PaperBroker
+    from unified_trading_platform.trading_core.brokers.paper_broker import PaperBroker
     logger.info("Registering Paper broker ...")
     BrokerFactory.register_broker('paper', PaperBroker)
 except ImportError:

@@ -1,6 +1,8 @@
 from __future__ import annotations
 import datetime as dt
 from pathlib import Path
+from typing import Tuple
+import uuid
 import pandas as pd
 
 FILL_MODEL = "close_same"   # kept for future use
@@ -19,6 +21,23 @@ def nearest_ts(df: pd.DataFrame | pd.Series, ts: pd.Timestamp) -> pd.Timestamp:
     uniq = pd.DatetimeIndex(df.index.unique()).sort_values()
     pos = uniq.get_indexer([pd.Timestamp(ts)], method="nearest")[0]
     return uniq[pos]
+
+
+def generate_unique_id(prefix: str = "") -> Tuple[int, str]:
+    """
+    Generate a unique request ID and subscription ID pair.
+    
+    Args:
+        prefix: Optional prefix for the subscription ID
+        
+    Returns:
+        tuple: (req_id: int, subscription_id: str)
+            - req_id: A positive 31-bit integer for use with IB API
+            - subscription_id: A unique string identifier with optional prefix
+    """
+    req_id = int(uuid.uuid4().int & (1 << 31) - 1)  # Generate a positive 31-bit integer
+    sub_id = f"{prefix}{uuid.uuid4().hex}" if prefix else str(uuid.uuid4())
+    return req_id, sub_id
 
 """
 Convert date string from one format to another.

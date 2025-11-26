@@ -5,31 +5,35 @@ Implements the BrokerInterface for IB TWS/Gateway API.
 
 import threading
 import time
-from typing import List, Dict, Any, Callable, Optional
+from typing import Dict, List, Optional, Callable, Any, Set, Tuple
 from datetime import datetime
 
-from unified_trading_platform.trading_core.utils import get_logger
-
-# Initialize logger
-logger = get_logger(__name__)
+import pandas as pd
 
 try:
     from ibapi.client import EClient
-    from ibapi.wrapper import EWrapper
+    from ibapi.common import BarData, TickerId, OrderId, MarketDataTypeEnum
     from ibapi.contract import Contract as IBContract
     from ibapi.order import Order as IBOrder
-    from ibapi.common import OrderId
+    from ibapi.wrapper import EWrapper
     IB_AVAILABLE = True
 except ImportError:
     IB_AVAILABLE = False
-    logger.warning("IB API not available. Install with: pip install ibapi")
 
-from unified_trading_platform.trading_core.brokers import BrokerInterface
-from unified_trading_platform.trading_core.data_models import (
-    Contract, Order, Trade, TickData, OrderType, OrderAction, 
-    OrderStatus, SecurityType, MarketDataType, TickType, OptionChain, Greeks, 
-    MarketDataSubscription, MarketDataError
-)
+from unified_trading_platform.trading_core.brokers.base_broker import BrokerInterface
+from unified_trading_platform.trading_core.data_models import Contract
+from unified_trading_platform.trading_core.data_models import (Order, OrderAction, OrderStatus, OrderType)
+from unified_trading_platform.trading_core.data_models import OptionChain, StrikeGroup, ExpirationGroup
+from unified_trading_platform.trading_core.data_models import OptionContract
+from unified_trading_platform.trading_core.data_models import OptionRight
+from unified_trading_platform.trading_core.data_models import MarketDataType
+from unified_trading_platform.trading_core.data_models import TickData
+from unified_trading_platform.trading_core.data_models import UnderlyingInfo
+from unified_trading_platform.trading_core.utils.utils import generate_unique_id
+from unified_trading_platform.trading_core.utils.logger import get_logger
+
+# Initialize logger
+logger = get_logger(__name__)
 
 class IBBroker(BrokerInterface):
     """Interactive Brokers implementation"""
@@ -55,7 +59,7 @@ class IBBroker(BrokerInterface):
         self.option_chains = {}  # Cache for option chains
         self.requestid_cachekey = {} # a dict map the req id to option cache key
         self.greeks_data = {}  # Cache for Greeks data
-        self.market_data_type = MarketDataType.DELAYED  # Default to delayed
+        self.market_data_type = MarketDataTypeEnum.DELAYED  # Default to delayed
         self._api_thread = None
         self._connected_event = threading.Event()
         self._lock = threading.RLock()
@@ -133,8 +137,8 @@ class IBBroker(BrokerInterface):
             ib_contract.lastTradeDateOrContractMonth = contract.expiry
         if contract.strike:
             ib_contract.strike = contract.strike
-        if contract.right:
-            ib_contract.right = contract.right.value
+        if contract.option_right:
+            ib_contract.option_right = contract.option_right
         if contract.multiplier:
             ib_contract.multiplier = contract.multiplier
         if contract.primary_exchange:
@@ -143,10 +147,10 @@ class IBBroker(BrokerInterface):
             ib_contract.includeExpired = contract.include_expired
 
         # Debug output for options
-        if contract.security_type == SecurityType.OPTION:
-            logger.debug(f"Created IB option contract: Symbol={ib_contract.symbol}, SecType={ib_contract.secType}, "
-                        f"Exchange={ib_contract.exchange}, Expiry={ib_contract.lastTradeDateOrContractMonth}, "
-                        f"Strike={ib_contract.strike}, Right={ib_contract.right}, Multiplier={ib_contract.multiplier}")
+        # if contract.security_type == SecurityType.OPTION:
+        #     logger.debug(f"Created IB option contract: Symbol={ib_contract.symbol}, SecType={ib_contract.secType}, "
+        #                 f"Exchange={ib_contract.exchange}, Expiry={ib_contract.lastTradeDateOrContractMonth}, "
+        #                 f"Strike={ib_contract.strike}, Right={ib_contract.right}, Multiplier={ib_contract.multiplier}")
 
         return ib_contract
 
@@ -185,7 +189,6 @@ class IBBroker(BrokerInterface):
         self.historical_data[req_id] = []
 
         ib_contract = self._create_ib_contract(contract)
-
 
         try:
             # Request historical data
@@ -289,40 +292,31 @@ class IBBroker(BrokerInterface):
         """Get account information"""
         return self.account_info
 
-    def subscribe_market_data(self, contract: Contract, callback: Callable, 
-                             market_data_type: MarketDataType = MarketDataType.DELAYED,
-                             snapshot: bool = False, regulatory_snapshot: bool = False,
-                             generic_tick_list: Optional[List[str]] = None) -> str:
+    def set_market_data_type(self, market_data_type: str) -> bool:
+        raise NotImplementedError
+
+    def subscribe_market_data(self, contract: Contract, callback: Callable, **kwargs):
         """Subscribe to market data with enhanced options support"""
         if not self.is_connected:
             raise Exception("Not connected to broker")
 
-        req_id = len(self.market_data_subscriptions) + 2000
-        subscription_id = f"sub_{req_id}"
-        
-        # Create subscription object
-        subscription = MarketDataSubscription(
-            contract=contract,
-            subscription_id=subscription_id,
-            market_data_type=market_data_type,
-            snapshot=snapshot,
-            regulatory_snapshot=regulatory_snapshot,
-            generic_tick_list=",".join(generic_tick_list or []),
-            callback=callback,
-            is_active=True
-        )
-        logger.debug(f"subscription.generic_tick_list = {subscription.generic_tick_list}")
-        self.market_data_subscriptions[subscription_id] = subscription
-        self.market_data[req_id] = {
-            'subscription_id': subscription_id,
+        req_id, _ = generate_unique_id(prefix="sub_")
+
+        market_data_type = kwargs.get('market_data_type', MarketDataType.DELAYED)
+        snapshot = kwargs.get('snapshot', False)
+        regulatory_snapshot = kwargs.get('regulatory_snapshot', False)
+        generic_tick_list = kwargs.get('generic_tick_list', [])
+        mdoff = "" if not generic_tick_list else "mdoff"  # Check if list is empty
+
+        self.market_data_subscriptions[req_id] = {
             'contract': contract,
             'callback': callback,
+            'is_active': False,
             'data': {}
         }
 
         logger.debug("Creating IB contract for market data subscription")
         ib_contract = self._create_ib_contract(contract)
-        logger.debug(f"ib_contract = {ib_contract}")
         try:
             # Set market data type
             md_type_map = {
@@ -332,45 +326,29 @@ class IBBroker(BrokerInterface):
                 MarketDataType.DELAYED_FROZEN: 4
             }
             self.client.reqMarketDataType(md_type_map.get(market_data_type, 3))
-            self.client.reqMktData(req_id, ib_contract, subscription.generic_tick_list, snapshot, regulatory_snapshot, generic_tick_list or [])
-            
-            logger.info(f"Market data subscription completed: {subscription_id}")
-            return subscription_id
+            self.client.reqMktData(req_id, ib_contract, mdoff, snapshot, regulatory_snapshot, generic_tick_list)
+            self.market_data_subscriptions[req_id]['is_active'] = True
+            logger.info(f"Market data subscription completed: {req_id}")
+            return req_id
         except Exception as e:
             logger.error(f"Error subscribing to market data: {e}", exc_info=True)
-            if subscription_id in self.market_data_subscriptions:
-                del self.market_data_subscriptions[subscription_id]
-            if req_id in self.market_data:
-                del self.market_data[req_id]
+            if req_id in self.market_data_subscriptions:
+                del self.market_data_subscriptions[req_id]
             raise e
 
     def unsubscribe_market_data(self, subscription_id: str) -> bool:
         """Unsubscribe from market data using subscription ID"""
         if subscription_id not in self.market_data_subscriptions:
             return False
-
-        subscription = self.market_data_subscriptions[subscription_id]
-        subscription.is_active = False
-        
-        # Find the request ID for this subscription
-        req_id = None
-        for rid, data in self.market_data.items():
-            if data.get('subscription_id') == subscription_id:
-                req_id = rid
-                break
-                
-        if req_id is not None:
-                try:
-                    self.client.cancelMktData(req_id)
-                    del self.market_data[req_id]
-                except Exception as e:
-                    logger.error(f"Error unsubscribing from market data: {e}", exc_info=True)
-                return False
-        
-        del self.market_data_subscriptions[subscription_id]
+        try:
+            self.client.cancelMktData(subscription_id)
+            del self.market_data_subscriptions[subscription_id]
+        except Exception as e:
+            logger.error(f"Error unsubscribing from market data: {e}", exc_info=True)
+            return False
         return True
 
-    def get_market_data_subscriptions(self) -> List[MarketDataSubscription]:
+    def get_market_data_subscriptions(self) -> List[str]:
         """Get all active market data subscriptions"""
         return [sub for sub in self.market_data_subscriptions.values() if sub.is_active]
     
@@ -483,40 +461,25 @@ class IBBroker(BrokerInterface):
             raise e
         return None
 
-    def get_greeks(self, option_contract: Contract) -> Greeks:
-        """Get options Greeks for a specific option contract"""
-        if not self.is_connected:
-            raise Exception("Not connected to broker")
+    def get_greeks(self, option_contract: Contract) -> Dict[str, Any]:
+        pass
+    #     """Get options Greeks for a specific option contract"""
+    #     if not self.is_connected:
+    #         raise Exception("Not connected to broker")
             
-        # Check cache first
-        cache_key = f"{option_contract.symbol}_{option_contract.strike}_{option_contract.right}_{option_contract.expiry}"
-        if cache_key in self.greeks_data:
-            cached_greeks = self.greeks_data[cache_key]
-            if (datetime.now() - cached_greeks.timestamp).seconds < 60:  # 1 minute cache
-                return cached_greeks
+    #     # Check cache first
+    #     cache_key = f"{option_contract.symbol}_{option_contract.strike}_{option_contract.right}_{option_contract.expiry}"
+    #     if cache_key in self.greeks_data:
+    #         cached_greeks = self.greeks_data[cache_key]
+    #         if (datetime.now() - cached_greeks.timestamp).seconds < 60:  # 1 minute cache
+    #             return cached_greeks
         
-        # Request Greeks from market data
-        # This would typically be done by subscribing to market data with Greeks
-        # For now, return a placeholder
-        greeks = Greeks()
-        self.greeks_data[cache_key] = greeks
-        return greeks
-
-    def set_market_data_type(self, market_data_type: MarketDataType) -> bool:
-        """Set the market data type (live, delayed, etc.)"""
-        try:
-            md_type_map = {
-                MarketDataType.LIVE: 1,
-                MarketDataType.FROZEN: 2,
-                MarketDataType.DELAYED: 3,
-                MarketDataType.DELAYED_FROZEN: 4
-            }
-            self.client.reqMarketDataType(md_type_map.get(market_data_type, 3))
-            self.market_data_type = market_data_type
-            return True
-        except Exception as e:
-            logger.error(f"Error setting market data type: {e}", exc_info=True)
-            return False
+    #     # Request Greeks from market data
+    #     # This would typically be done by subscribing to market data with Greeks
+    #     # For now, return a placeholder
+    #     greeks = Greeks()
+    #     self.greeks_data[cache_key] = greeks
+    #     return greeks
 
 class IBClient(EWrapper, EClient):
     """IB API client wrapper"""
@@ -535,7 +498,7 @@ class IBClient(EWrapper, EClient):
         except Exception:
             pass
 
-    def historicalData(self, reqId: int, bar):
+    def historicalData(self, reqId: int, bar: BarData):
         """Receive historical data"""
         if reqId in self.broker.historical_data:
             self.broker.historical_data[reqId].append(bar)
@@ -544,11 +507,10 @@ class IBClient(EWrapper, EClient):
         """Historical data complete"""
         pass
 
-    def tickPrice(self, reqId: int, tickType: int, price: float, attrib):
+    def tickPrice(self, reqId: int, tickType: int, value: float, attrib):
         """Receive tick price data with enhanced options support"""
-        if reqId in self.broker.market_data:
-            data = self.broker.market_data[reqId]
-            contract = data['contract']
+        if reqId in self.broker.market_data_subscriptions:
+            contract = self.broker.market_data_subscriptions[reqId]['contract']
 
             # Enhanced tick type mapping for options and stocks
             tick_mapping = {
@@ -580,68 +542,71 @@ class IBClient(EWrapper, EClient):
 
             if tickType in tick_mapping:
                 field_name, tick_type = tick_mapping[tickType]
-                data['data'][field_name] = price
-                data['data'][f'{field_name}_tick_type'] = tick_type
 
-            # Update subscription timestamp
-            subscription_id = data.get('subscription_id')
-            if subscription_id and subscription_id in self.broker.market_data_subscriptions:
-                self.broker.market_data_subscriptions[subscription_id].last_update = datetime.now()
-
-            # Create enhanced tick data
+                # Create enhanced tick data
                 tick_data = TickData(
                     timestamp=datetime.now(),
-                exchange=contract.exchange,
-                security_type=contract.security_type,
-                currency=contract.currency,
-                symbol=contract.symbol,
-                bid=data['data'].get('bid'),
-                ask=data['data'].get('ask'),
-                last=data['data'].get('last'),
-                high=data['data'].get('high'),
-                low=data['data'].get('low'),
-                open=data['data'].get('open'),
-                close=data['data'].get('close'),
-                # Options-specific data
-                delta=data['data'].get('delta'),
-                gamma=data['data'].get('gamma'),
-                theta=data['data'].get('theta'),
-                vega=data['data'].get('vega'),
-                rho=data['data'].get('rho'),
-                implied_volatility=data['data'].get('implied_volatility'),
-                option_price=data['data'].get('option_price'),
-                tick_type=data['data'].get('last_tick_type'),
-                market_data_type=self.broker.market_data_type,
-                raw_data=data['data'].copy()
+                    exchange=contract.exchange,
+                    security_type=contract.security_type,
+                    currency=contract.currency,
+                    symbol=contract.symbol,
+                    bid=value if field_name == 'bid' else None,
+                    ask=value if field_name == 'ask' else None,
+                    last=value if field_name == 'last' else None,
+                    high=value if field_name == 'high' else None,
+                    low=value if field_name == 'low' else None,
+                    open=value if field_name == 'open' else None,
+                    close=value if field_name == 'close' else None,
+                    # Options-specific data
+                    delta=value if field_name == 'delta' else None,
+                    gamma=value if field_name == 'gamma' else None,
+                    theta=value if field_name == 'theta' else None,
+                    vega=value if field_name == 'vega' else None,
+                    rho=value if field_name == 'rho' else None,
+                    implied_volatility=value if field_name == 'implied_volatility' else None,
+                    option_price=value if field_name == 'option_price' else None,
                 )
 
-                if data['callback']:
-                    data['callback'](tick_data)
+                if self.broker.market_data_subscriptions[reqId]['callback']:
+                    self.broker.market_data_subscriptions[reqId]['callback'](tick_data)
 
-    def tickSize(self, reqId: int, tickType: int, size: int):
+    def tickSize(self, reqId: int, tickType: int, value: int):
         """Receive tick size data with enhanced support"""
-        if reqId in self.broker.market_data:
-            data = self.broker.market_data[reqId]
+        if reqId in self.broker.market_data_subscriptions:
+            subscription = self.broker.market_data_subscriptions[reqId]
             
             # Enhanced size tick mapping
             size_mapping = {
                 # Live size ticks
-                0: 'bid_size',
-                3: 'ask_size', 
-                5: 'last_size',
-                8: 'volume',
+                0: ('bid_size', TickType.BID_SIZE),
+                3: ('ask_size', TickType.ASK_SIZE), 
+                5: ('last_size', TickType.LAST_SIZE),
+                8: ('volume', TickType.VOLUME),
                 # Delayed size ticks
-                69: 'bid_size',
-                70: 'ask_size',
-                72: 'last_size',
-                74: 'volume',
+                69: ('bid_size', TickType.BID_SIZE),
+                70: ('ask_size', TickType.ASK_SIZE),
+                72: ('last_size', TickType.LAST_SIZE),
+                74: ('volume', TickType.VOLUME),
                 # Options-specific size ticks
-                21: 'open_interest'
+                21: ('open_interest', TickType.OPEN_INTEREST)
             }
-            
-            if tickType in size_mapping:
-                field_name = size_mapping[tickType]
-                data['data'][field_name] = size
+            field_name, tick_type = tick_mapping[tickType]
+
+            # Create enhanced tick data
+            tick_data = TickData(
+                timestamp=datetime.now(),
+                exchange=contract.exchange,
+                security_type=contract.security_type,
+                currency=contract.currency,
+                symbol=contract.symbol,
+                bid_size=value if field_name == 'bid_size' else None,
+                ask_size=value if field_name == 'ask_size' else None,
+                last_size=value if field_name == 'last_size' else None,
+                volume=value if field_name == 'volume' else None,
+                open_interest=value if field_name == 'open_interest' else None
+            )
+            if self.broker.market_data_subscriptions[reqId]['callback']:
+                self.broker.market_data_subscriptions[reqId]['callback'](tick_data)
 
     def orderStatus(self, orderId: OrderId, status: str, filled: float,
                    remaining: float, avgFillPrice: float, permId: int,
