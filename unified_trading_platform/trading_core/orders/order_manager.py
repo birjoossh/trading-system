@@ -268,7 +268,7 @@ class OrderManager:
                 order.broker_name,
                 order.contract.symbol,
                 order.contract.exchange,
-                order.contract.security_type,
+                order.contract.security_type.value,
                 order.contract.currency,
                 order.order.action.value,
                 order.order.quantity,

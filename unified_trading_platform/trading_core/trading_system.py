@@ -132,7 +132,7 @@ class TradingSystem:
 
     def submit_limit_order(self, symbol: str, exchange: str, action: str,
                          quantity: int, limit_price: float, broker_name: str,
-                         security_type: str = "STK", currency: str = "USD",
+                         security_type: SecurityType = SecurityType.STOCK, currency: str = "USD",
                          time_in_force: str = "DAY", account: Optional[str] = None) -> str:
         """Submit a limit order"""
         contract = Contract(

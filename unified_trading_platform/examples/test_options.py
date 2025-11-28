@@ -144,9 +144,9 @@ def main():
         logger.info(f"underlying: {spy_underlying}")
         get_contract_details(broker, spy_underlying)
 
-        option_chain = get_option_chain(broker, spy_underlying)
-        expiry = option_chain.expiration_dates[0]
-        strike = option_chain.strikes[0]
+        # option_chain = get_option_chain(broker, spy_underlying)
+        # expiry = option_chain.expiration_dates[0]
+        # strike = option_chain.strikes[0]
 
         spy_option_contract = Contract(
             symbol="SPY",
@@ -155,14 +155,14 @@ def main():
             currency="USD",
             expiry = '20251209',
             # strike=400.0,
-            right=OptionRight.CALL,
+            option_right=OptionRight.CALL,
             multiplier="100"
         )
-        #sub_id = subscribe_market_data(broker, spy_option_contract) 
+        sub_id = subscribe_market_data(broker, spy_option_contract) 
 
         subscriptions = list_active_subscriptions(broker)
         for sub in subscriptions:
-            logger.info(f"  {sub.subscription_id}: {sub.contract.symbol} ({sub.contract.security_type.value})")
+            logger.info(f"{sub}")
         
         #get_option_greeks(broker, spy_option_contract)
 

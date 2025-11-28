@@ -14,6 +14,7 @@ try:
     from ibapi.client import EClient
     from ibapi.common import BarData, TickerId, OrderId, MarketDataTypeEnum
     from ibapi.contract import Contract as IBContract
+    from ibapi.contract import ContractDetails
     from ibapi.order import Order as IBOrder
     from ibapi.wrapper import EWrapper
     IB_AVAILABLE = True
@@ -28,6 +29,7 @@ from unified_trading_platform.trading_core.data_models import OptionContract
 from unified_trading_platform.trading_core.data_models import OptionRight
 from unified_trading_platform.trading_core.data_models import MarketDataType
 from unified_trading_platform.trading_core.data_models import TickData
+from unified_trading_platform.trading_core.data_models import TickType
 from unified_trading_platform.trading_core.data_models import UnderlyingInfo
 from unified_trading_platform.trading_core.utils.utils import generate_unique_id
 from unified_trading_platform.trading_core.utils.logger import get_logger
@@ -350,7 +352,7 @@ class IBBroker(BrokerInterface):
 
     def get_market_data_subscriptions(self) -> List[str]:
         """Get all active market data subscriptions"""
-        return [sub for sub in self.market_data_subscriptions.values() if sub.is_active]
+        return [sub for sub in self.market_data_subscriptions.values() if sub['is_active']]
     
     def get_contract_details(self, contract: Contract) -> Dict[str, Any]:
         """
@@ -415,17 +417,6 @@ class IBBroker(BrokerInterface):
         """Get option chain for an underlying instrument"""
         if not self.is_connected:
             raise Exception("Not connected to broker")
-            
-        # Create cache key
-        #cache_key = f"{underlying_contract.symbol}_{underlying_contract.exchange}"
-        
-        # Check cache first
-        #if cache_key in self.option_chains:
-        #    cached_chain = self.option_chains[cache_key]
-        #    if (datetime.now() - cached_chain.last_updated).seconds < 300:  # 5 minute cache
-        #        return cached_chain
-
-        #self.option_chains[cache_key] = None
 
         # Request option chain from IB
         req_id = len(self.option_chains) + 3000
@@ -438,7 +429,49 @@ class IBBroker(BrokerInterface):
                 'result': None
             }
             logger.debug(f"underlying conId = {underlying_contract.conId if hasattr(underlying_contract, 'conId') else 0}")
-            # Request option chain
+            # Request option chaino
+            logger.info(f"option exchange = {underlying_contract.exchange}")
+            ib_option_contract = self._create_ib_contract(underlying_contract)
+            self.client.reqContractDetails(req_id, ib_option_contract)
+
+            # Wait for response till timeout
+            if not response_received.wait(timeout=20):
+                del self.client.pending_option_chains[req_id]
+                raise TimeoutError("Timeout waiting for option chain")
+
+            if req_id in self.client.pending_option_chains and self.client.pending_option_chains[req_id].get('result'):
+                logger.debug("Received option chain results")
+                option_chain = self.client.pending_option_chains[req_id].get('result')
+                #self.option_chains[cache_key] = option_chain
+                del self.client.pending_option_chains[req_id]
+                return option_chain
+        except Exception as e:
+            logger.error(f"Error getting option chain: {e}", exc_info=True)
+            if req_id in self.client.pending_option_chains:
+                del self.client.pending_option_chains[req_id]
+            raise e
+        return None
+
+    def get_option_chain2(self, underlying_contract: Contract, 
+                        expiration_dates: Optional[List[str]] = None,
+                        strikes: Optional[List[float]] = None) -> OptionChain:
+        """Get option chain for an underlying instrument"""
+        if not self.is_connected:
+            raise Exception("Not connected to broker")
+
+        # Request option chain from IB
+        req_id = len(self.option_chains) + 3000
+        
+        try:
+            response_received = threading.Event()
+            self.client.pending_option_chains[req_id] = {
+                'event': response_received,
+                'underlying_contract': underlying_contract,
+                'result': None
+            }
+            logger.debug(f"underlying conId = {underlying_contract.conId if hasattr(underlying_contract, 'conId') else 0}")
+            # Request option chaino
+            logger.info(f"option exchange = {underlying_contract.exchange}")
             self.client.reqSecDefOptParams(req_id, underlying_contract.symbol, underlying_contract.exchange, \
                     underlying_contract.security_type.value, underlying_contract.conId \
                         if hasattr(underlying_contract, 'conId') else 0)
@@ -510,7 +543,7 @@ class IBClient(EWrapper, EClient):
     def tickPrice(self, reqId: int, tickType: int, value: float, attrib):
         """Receive tick price data with enhanced options support"""
         if reqId in self.broker.market_data_subscriptions:
-            contract = self.broker.market_data_subscriptions[reqId]['contract']
+            contract: Contract = self.broker.market_data_subscriptions[reqId]['contract']
 
             # Enhanced tick type mapping for options and stocks
             tick_mapping = {
@@ -539,41 +572,44 @@ class IBClient(EWrapper, EClient):
                 104: ('implied_volatility', TickType.IMPLIED_VOLATILITY),
                 100: ('option_price', TickType.OPTION_PRICE)
             }
+            if tickType not in tick_mapping:
+                logger.error(f"Unknown tick type while receiving tick price data: {tickType}")
+                return
 
-            if tickType in tick_mapping:
-                field_name, tick_type = tick_mapping[tickType]
+            field_name, tick_type = tick_mapping[tickType]
 
-                # Create enhanced tick data
-                tick_data = TickData(
-                    timestamp=datetime.now(),
-                    exchange=contract.exchange,
-                    security_type=contract.security_type,
-                    currency=contract.currency,
-                    symbol=contract.symbol,
-                    bid=value if field_name == 'bid' else None,
-                    ask=value if field_name == 'ask' else None,
-                    last=value if field_name == 'last' else None,
-                    high=value if field_name == 'high' else None,
-                    low=value if field_name == 'low' else None,
-                    open=value if field_name == 'open' else None,
-                    close=value if field_name == 'close' else None,
-                    # Options-specific data
-                    delta=value if field_name == 'delta' else None,
-                    gamma=value if field_name == 'gamma' else None,
-                    theta=value if field_name == 'theta' else None,
-                    vega=value if field_name == 'vega' else None,
-                    rho=value if field_name == 'rho' else None,
-                    implied_volatility=value if field_name == 'implied_volatility' else None,
-                    option_price=value if field_name == 'option_price' else None,
-                )
+            # Create enhanced tick data
+            tick_data = T1ickData(
+                timestamp=datetime.now(),
+                exchange=contract.exchange,
+                security_type=contract.security_type,
+                currency=contract.currency,
+                symbol=contract.symbol,
+                bid=value if field_name == 'bid' else None,
+                ask=value if field_name == 'ask' else None,
+                last=value if field_name == 'last' else None,
+                high=value if field_name == 'high' else None,
+                low=value if field_name == 'low' else None,
+                open=value if field_name == 'open' else None,
+                close=value if field_name == 'close' else None,
+                # Options-specific data
+                delta=value if field_name == 'delta' else None,
+                gamma=value if field_name == 'gamma' else None,
+                theta=value if field_name == 'theta' else None,
+                vega=value if field_name == 'vega' else None,
+                rho=value if field_name == 'rho' else None,
+                implied_volatility=value if field_name == 'implied_volatility' else None,
+                option_price=value if field_name == 'option_price' else None,
+            )
 
-                if self.broker.market_data_subscriptions[reqId]['callback']:
-                    self.broker.market_data_subscriptions[reqId]['callback'](tick_data)
+            if self.broker.market_data_subscriptions[reqId]['callback']:
+                self.broker.market_data_subscriptions[reqId]['callback'](tick_data)
 
     def tickSize(self, reqId: int, tickType: int, value: int):
         """Receive tick size data with enhanced support"""
         if reqId in self.broker.market_data_subscriptions:
             subscription = self.broker.market_data_subscriptions[reqId]
+            contract: Contract = subscription['contract']
             
             # Enhanced size tick mapping
             size_mapping = {
@@ -585,12 +621,13 @@ class IBClient(EWrapper, EClient):
                 # Delayed size ticks
                 69: ('bid_size', TickType.BID_SIZE),
                 70: ('ask_size', TickType.ASK_SIZE),
-                72: ('last_size', TickType.LAST_SIZE),
-                74: ('volume', TickType.VOLUME),
-                # Options-specific size ticks
-                21: ('open_interest', TickType.OPEN_INTEREST)
+                71: ('ask_size', TickType.LAST_SIZE),
+                74: ('volume', TickType.VOLUME)
             }
-            field_name, tick_type = tick_mapping[tickType]
+            if tickType not in size_mapping:
+                logger.error(f"Unknown tick type while receiving tick size data: {tickType}")
+                return
+            field_name, _ = size_mapping[tickType]
 
             # Create enhanced tick data
             tick_data = TickData(
@@ -605,8 +642,8 @@ class IBClient(EWrapper, EClient):
                 volume=value if field_name == 'volume' else None,
                 open_interest=value if field_name == 'open_interest' else None
             )
-            if self.broker.market_data_subscriptions[reqId]['callback']:
-                self.broker.market_data_subscriptions[reqId]['callback'](tick_data)
+            if subscription['callback']:
+                subscription['callback'](tick_data)
 
     def orderStatus(self, orderId: OrderId, status: str, filled: float,
                    remaining: float, avgFillPrice: float, permId: int,
@@ -704,6 +741,9 @@ class IBClient(EWrapper, EClient):
     def managedAccounts(self, accountsList:str):
         self.accounts = accountsList
 
+    def contractDetails(self, reqId: int, contractDetails: ContractDetails):
+        return super().contractDetails(reqId, contractDetails)
+
     def securityDefinitionOptionParameter(self, reqId: int, exchange: str, underlyingConId: int, 
                                           tradingClass: str, multiplier: str, expirations: set, 
                                           strikes: set):
@@ -713,7 +753,10 @@ class IBClient(EWrapper, EClient):
             # Convert to our OptionChain format
             expiration_dates = list(expirations)
             strike_prices = list(strikes)
-            
+            logger.info(f"Received option chain, expiration_dates: {expiration_dates}, strikes: {strike_prices}")
+            logger.info(f"Received option chain, strikes: {strike_prices}")
+            logger.info(f"Received option chain, exchange: {exchange}")
+            logger.info(f"Received option chain, multiplier: {multiplier}")
             option_chain = OptionChain(
                 underlying_symbol=underlying_contract.symbol, 
                 underlying_contract=underlying_contract,
