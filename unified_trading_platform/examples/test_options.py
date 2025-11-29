@@ -137,7 +137,7 @@ def main():
         spy_underlying = Contract(
             symbol="SPY",
             security_type=SecurityType.STOCK,
-            exchange="",
+            exchange="NASDAQOM",
             currency="USD",
             conId = 756733
         )
@@ -160,11 +160,11 @@ def main():
         )
         sub_id = subscribe_market_data(broker, spy_option_contract) 
 
-        subscriptions = list_active_subscriptions(broker)
-        for sub in subscriptions:
-            logger.info(f"{sub}")
+        # subscriptions = list_active_subscriptions(broker)
+        # for sub in subscriptions:
+        #     logger.info(f"{sub}")
         
-        #get_option_greeks(broker, spy_option_contract)
+        # #get_option_greeks(broker, spy_option_contract)
 
         get_historical_market_data(broker, spy_option_contract)
 
@@ -176,9 +176,7 @@ def main():
             broker.unsubscribe_market_data(sub_id)
             logger.info("✅ Subscription cancelled")
         except Exception as e:
-            logger.info(f"❌ Fallback option subscription failed: {e}")
-        except Exception as e:
-            logger.info(f"❌ Error: {e}")
+            logger.info(f"Error: {e}")
     
     finally:
         # Disconnect

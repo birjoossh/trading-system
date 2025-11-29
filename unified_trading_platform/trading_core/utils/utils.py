@@ -54,8 +54,5 @@ Convert date string from one format to another.
         "%B %d, %Y",   # January 02, 2024
     ]
 """
-def fromYYMMDD(date_str: str, dest_format: str = "%Y-%m-%d") -> str:
-    date_obj = dt.datetime.strptime(date_str, dest_format).date()
-    if date_obj is None:
-        raise ValueError(f"Could not parse date string: {date_str}")
-    return date_obj.strftime(dest_format)
+def format_date(date_str: str, source_format: str = "%Y%m%d", dest_format: str = "%Y-%m-%d") -> str:
+    return dt.datetime.strptime(date_str, source_format).strftime(dest_format)

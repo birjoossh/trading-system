@@ -30,7 +30,6 @@ from unified_trading_platform.trading_core.data_models import OptionRight
 from unified_trading_platform.trading_core.data_models import TickData
 from unified_trading_platform.trading_core.data_models import UnderlyingInfo
 from unified_trading_platform.trading_core.utils import get_logger
-from unified_trading_platform.trading_core.utils.utils import fromYYMMDD
 
 from .jio import JioH5Adapter
 

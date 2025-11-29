@@ -63,34 +63,34 @@ def main():
 
     try:
         # Get Historical Data
-        # print_section("Getting Historical Data")
+        print_section("Getting Historical Data")
 
-        # logger.info("Fetching historical data for AAPL...")
-        # hist_data = trading_system.get_historical_data(
-        #     symbol="AAPL",
-        #     exchange="NASDAQ",
-        #     security_type=SecurityType.STOCK,
-        #     currency="USD",
-        #     duration="5 D",  # 5 days
-        #     bar_size="1 hour",
-        #     broker_name="ib"
-        # )
-        # if len(hist_data)>0:
-        #     logger.info(f"Retrieved {len(hist_data)} bars")
-        #     logger.info("Latest 5 bars:")
-        #     logger.info(f"\n{hist_data[:-5]}")
+        logger.info("Fetching historical data for AAPL...")
+        hist_data = trading_system.get_historical_data(
+            symbol="AAPL",
+            exchange="NASDAQ",
+            security_type=SecurityType.STOCK,
+            currency="USD",
+            duration="5 D",  # 5 days
+            bar_size="1 hour",
+            broker_name="ib"
+        )
+        if len(hist_data)>0:
+            logger.info(f"Retrieved {len(hist_data)} bars")
+            logger.info("Latest 5 bars:")
+            logger.info(f"\n{hist_data[:-5]}")
 
         # Subscribe to Market Data
-        # print_section("Subscribing to Market Data")
-        # def start_market_data_subscription():
-        #     trading_system.subscribe_market_data(
-        #         symbol="AAPL",
-        #         exchange="NASDAQ",
-        #         callback=on_market_data,
-        #         broker_name="ib"
-        #     )
-        # market_data_thread = threading.Thread(target=start_market_data_subscription, daemon=False)
-        # market_data_thread.start()
+        print_section("Subscribing to Market Data")
+        def start_market_data_subscription():
+            trading_system.subscribe_market_data(
+                symbol="AAPL",
+                exchange="NASDAQ",
+                callback=on_market_data,
+                broker_name="ib"
+            )
+        market_data_thread = threading.Thread(target=start_market_data_subscription, daemon=False)
+        market_data_thread.start()
 
         #Submit Orders
         print_section("Order Management Examples")
