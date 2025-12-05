@@ -10,7 +10,7 @@ import pandas as pd
 
 from unified_trading_platform.trading_core.utils import get_logger
 from unified_trading_platform.trading_core.data_models import (
-    OrderAction, OrderType, TickData, Contract
+    OrderAction, OrderType, TickData, Contract, SecurityType
 )
 
 # Initialize logger
@@ -115,7 +115,7 @@ class UnifiedStrategyEngine:
         # Create order signal
         contract = Contract(
             symbol=f"{leg.spec.option_type}{leg.strike}",
-            security_type="OPT",
+            security_type=SecurityType.OPTION,
             exchange="NSE",  # fixme: fix this
             currency="INR",  # fixme: fix this
             expiry=leg.expiry_date.strftime("%Y%m%d"),

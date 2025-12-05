@@ -89,7 +89,7 @@ def main():
         hist_data = trading_system.get_historical_data(
             symbol="NIFTY 50",
             exchange="NSE",
-            security_type="STK",
+            security_type=SecurityType.STOCK,
             currency="INR",
             duration="5 D",  # 5 days
             bar_size="1H",

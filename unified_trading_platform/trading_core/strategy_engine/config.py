@@ -115,6 +115,8 @@ class StrategyConfig:
     square_off_mode: str = "Partial"
     trail_to_be: TrailToBE = dc.field(default_factory=TrailToBE)
     lot_size: int = 50
+    symbol: str = "NIFTY 50"
+    currency: str = "INR"
     legs: List[LegSpec] = dc.field(default_factory=list)
     costs: Dict = dc.field(
         default_factory=lambda: {"per_lot_roundtrip": 0.0, "slippage_per_fill": 0.0}

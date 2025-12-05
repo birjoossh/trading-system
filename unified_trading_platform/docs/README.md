@@ -176,10 +176,11 @@ The main interface for the trading system.
 
 ```python
 from trading_core.brokers.base_broker import Contract
+from trading_core.data_models.security_type_enum import SecurityType
 
 contract = Contract(
     symbol="AAPL",           # Symbol
-    security_type="STK",     # STK, CASH, FUT, OPT, etc.
+    security_type=SecurityType.STOCK,     # STK, CASH, FUT, OPT, etc.
     exchange="NASDAQ",       # Exchange
     currency="USD",          # Currency
     expiry="20231215",       # For futures/options

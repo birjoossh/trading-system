@@ -41,7 +41,7 @@ class JioH5Adapter:
 
         ts = pd.to_datetime(df[ts_c])
         df.index = ts
-        df["Close"] = pd.to_numeric(df[px_c], errors="coerce")
+        df["close"] = pd.to_numeric(df[px_c], errors="coerce")
 
         # normalize likely columns
         if "strike" in df.columns: df["Strike"] = pd.to_numeric(df["strike"], errors="coerce")
@@ -80,7 +80,7 @@ class JioH5Adapter:
             base = base[base["Strike"].isna() | (base["Strike"] == 0)]
 
         if not base.empty:
-            return (base["Close"]
+            return (base["close"]
                 .groupby(pd.Grouper(freq=bar_length)).last()
                 .dropna())
 
@@ -91,7 +91,7 @@ class JioH5Adapter:
         opt = self.options_table()
         piv = (opt.reset_index()
                  .pivot_table(index=["Timestamp","Strike"], columns="OptionType",
-                              values="Close", aggfunc="last")
+                              values="close", aggfunc="last")
                  .dropna(subset=["CE","PE"]))
         piv["diff"] = (piv["CE"] - piv["PE"]).abs()
         idx = piv.groupby(level=0)["diff"].idxmin()
@@ -105,7 +105,7 @@ class JioH5Adapter:
         if "Instr" not in df.columns: return None
         fut = df[df["Instr"].str.contains("FUT", na=False)]
         if fut.empty: return None
-        return fut["Close"].groupby(pd.Grouper(freq=bar_length)).last().dropna()
+        return fut["close"].groupby(pd.Grouper(freq=bar_length)).last().dropna()
 
     def options_table(self) -> pd.DataFrame:
         df = self._read_tick()
@@ -145,7 +145,7 @@ class JioH5Adapter:
             elif "Strike" in base.columns:
                 base = base[base["Strike"].isna()]
             elif not base.empty:
-                spot = base["Close"]
+                spot = base["close"]
             else:
                 # fallback to synthetic spot
                 return self._synthetic_spot_from_options()
@@ -155,7 +155,7 @@ class JioH5Adapter:
             "Open":  "first",
             "High":  "max",
             "Low":   "min",
-            "Close": "last"
+            "close": "last"
         }).dropna()
         return ohlc
     

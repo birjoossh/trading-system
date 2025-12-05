@@ -71,7 +71,6 @@ class StrategyManager:
         # Initialize database tables
         init_strategy_tables(db_path)
 
-
     ## fixme: additional config should not be passed here
     def initialize(self, additional_config: Optional[Dict]) -> bool:
         """Initialize the strategy manager"""
@@ -122,12 +121,9 @@ class StrategyManager:
                 entry_time=self.strategy_config.entry_time,
                 exit_time=self.strategy_config.exit_time,
             )
-
             self.is_initialized = True
             #update_run_status(self.db_path, self.run_id, "INITIAL")
-
             return True
-
         except Exception as e:
             if self.run_id:
                 update_run_status(self.db_path, self.run_id, "ERROR", str(e))
@@ -137,7 +133,6 @@ class StrategyManager:
         """Start strategy execution"""
         if not self.is_initialized:
             raise RuntimeError( "Strategy manager not initialized. Call initialize() first.")
-
         try:
             update_run_status(self.db_path, self.run_id, "RUNNING")
             self.is_running = True
@@ -192,8 +187,8 @@ class StrategyManager:
 
     def _subscribe_to_market_data(self):
         """Subscribe to real-time market data"""
-        ## placeholder values for now
-        sub_id = self.trading_system.subscribe_market_data("SPY", "SMART", self._on_tick_callback, SecurityType.STOCK, "USD", self.venue) 
+        sub_id = self.trading_system.subscribe_market_data(self.strategy_config.symbol, self.venue, self._on_tick_callback, \
+                                                    SecurityType.STOCK, self.strategy_config.currency, self.venue)
         logger.info(f"Subscribed to market data with subscription ID: {sub_id}")
 
     def _on_tick_callback(self, tick_data: TickData):
@@ -385,18 +380,18 @@ class StrategyManager:
         historical_data = self.trading_system.get_historical_data(
             symbol="NIFTY 50",
             exchange="NSE",
-            security_type="STK",
+            security_type=SecurityType.STOCK,
             currency="INR",
             duration=f"{duration_days} D", 
             bar_size="1H", 
             broker_name=self.venue
         )
-
         return historical_data
 
     def _create_underlying_contract(self) -> Contract:
         """Create contract for underlying instrument"""
-        return Contract(symbol="SPY", security_type="STK", exchange="SMART", currency="USD", conId = 756733)
+        return Contract(symbol=self.strategy_config.symbol, security_type=SecurityType.STOCK, \
+            exchange=self.venue, currency=self.strategy_config.currency, conId = 756733)
 
     def _get_underlying_price(self, tick_data: TickData) -> float:
         """Get current underlying price"""

@@ -336,9 +336,13 @@ class PaperBroker(BrokerInterface):
                 df["timestamp"] = pd.to_datetime(df["timestamp"])
                 df = df[(df["symbol"] == contract.symbol) & (df["exchange"] == contract.exchange)]
                 df = df.sort_values("timestamp")
+                print(f"CSV data shape: {df.shape}")
+                print(df.head())
             else:
                 tick_data = JioH5Adapter(self.config.h5_path)
-                df = tick_data.tick_df(contract.symbol, contract.strike, contract.right, contract.expiry)
+                df = tick_data.tick_df(contract.symbol, contract.strike, contract.option_right, contract.expiry)
+                print(f"H5 data shape: {df.shape}")
+                print(df.head())
                 
             for _, row in df.iterrows():
                 if stop.is_set():

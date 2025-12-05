@@ -77,7 +77,7 @@ class TradingSystem:
         return False
 
     def get_historical_data(self, symbol: str, exchange: str,
-                          security_type: str = "STK", currency: str = "USD",
+                          security_type: SecurityType = SecurityType.STOCK, currency: str = "USD",
                           duration: str = "1 D", bar_size: str = "1H",
                           broker_name: Optional[str] = None) -> List[TickData]:
         """Get historical data for a symbol"""
@@ -111,7 +111,7 @@ class TradingSystem:
 
     def submit_market_order(self, symbol: str, exchange: str, action: str,
                           quantity: int, broker_name: str,
-                          security_type: str = "STK", currency: str = "USD",
+                          security_type: SecurityType = SecurityType.STOCK, currency: str = "USD",
                           account: Optional[str] = None) -> str:
         """Submit a market order"""
         contract = Contract(
@@ -155,7 +155,7 @@ class TradingSystem:
 
     def submit_stop_order(self, symbol: str, exchange: str, action: str,
                         quantity: int, stop_price: float, broker_name: str,
-                        security_type: str = "STK", currency: str = "USD",
+                        security_type: SecurityType = SecurityType.STOCK, currency: str = "USD",
                         time_in_force: str = "DAY", account: Optional[str] = None) -> str:
         """Submit a stop order"""
         contract = Contract(
