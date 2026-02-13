@@ -19,7 +19,7 @@ from unified_trading_platform.trading_core.utils import get_logger
 from unified_trading_platform.trading_core.data_models import OrderAction, OrderType, TickData, Contract, SecurityType
 from .config import StrategyConfig
 from .strikes import select_strike
-from .engine import (
+from .strategy_utils import (
     _hist_eod_ts,
     resolve_expiry_keyword,
     _reverse_position,
