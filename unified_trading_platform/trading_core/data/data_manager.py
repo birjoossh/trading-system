@@ -205,29 +205,40 @@ class DataManager:
         return tick_data_list
 
     def subscribe_real_time_data(
-        self, contract: Contract, callback: Callable, broker_name: Optional[str] = None
+        self,
+        contract: Contract,
+        callback: Callable,
+        broker_name: Optional[str] = None,
+        store_data: bool = True,
     ) -> bool:
-        """Subscribe to real-time market data and store in DB and/or notify subscribers.
-
+        """Subscribe to real-time market data
         Args:
-            contract (Contract): Instrument to subscribe to.
-            callback (Callable): Function to call with each TickData.
-            broker_name (str, optional): Which broker to use. Defaults to only/first one.
-
-        Returns:
-            bool: True if subscription was successful.
+            contract: Instrument to subscribe to
+            callback: Function to call with each TickData
+            broker_name: Which broker to use
+            store_data: Whether to synchronously store data in DB (default True)
+                        Set to False if using async/event system.
         """
         broker = self._get_broker(broker_name)
 
-        def storage_and_user_callback(tick_data: TickData):
-            # Store tick data
-            self._store_tick_data(tick_data)
-            # Forward to user's callback
-            callback(tick_data)
+        if store_data:
+            def storage_and_user_callback(tick_data: TickData):
+                # Store tick data
+                self._store_tick_data(tick_data)
+                # Forward to user's callback
+                callback(tick_data)
+            
+            final_callback = storage_and_user_callback
+        else:
+            final_callback = callback
 
         # Use broker to subscribe
         logger.info(f"Subscribing to market data for {asdict(contract)}")
-        return broker.subscribe_market_data(contract, storage_and_user_callback)
+        return broker.subscribe_market_data(contract, final_callback)
+
+    def store_tick(self, tick_data: TickData):
+        """Public method to store tick data (for external/async use)"""
+        self._store_tick_data(tick_data)
 
     def _store_tick_data(self, tick_data):
         with sqlite3.connect(self.db_path) as conn:

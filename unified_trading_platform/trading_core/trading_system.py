@@ -11,6 +11,7 @@ from unified_trading_platform.trading_core.utils import get_logger
 from unified_trading_platform.trading_core.brokers.broker_factory import BrokerFactory
 from unified_trading_platform.trading_core.data.data_manager import DataManager
 from unified_trading_platform.trading_core.orders.order_manager import OrderManager
+from unified_trading_platform.trading_core.event_system import EventEngine, Event, EventType
 from unified_trading_platform.trading_core.data_models import (
     Contract,
     Order,
@@ -41,20 +42,33 @@ class TradingSystem:
 
         self.order_manager.callbacks["order_submitted"].append(log_order_submission)
 
+        # Initialize Event Engine
+        self.event_engine = EventEngine()
+        self.event_engine.start()
+        self.event_engine.register(EventType.TICK, self._process_tick_event)
+
+    def _process_tick_event(self, event: Event):
+        """Process tick event: Store data and call user callback"""
+        data = event.data
+        tick = data.get("tick")
+        callback = data.get("callback")
+        
+        if tick:
+            # Async DB Write
+            self.data_manager.store_tick(tick)
+            # User Callback
+            if callback:
+                try:
+                    callback(tick)
+                except Exception as e:
+                    self.logger.error(f"Error in user callback: {e}")
+
     def add_broker(self, name: str, broker_type: str, **config) -> bool:
         """Add a broker to the system"""
         try:
-            self.logger.info(f"Creating broker of type: {broker_type}")
-            # Create broker instance with required parameters
-            if broker_type.lower() == "interactive_brokers" or broker_type.lower() == "ib":
-                host = config.get("host", "127.0.0.1")
-                port = config.get("port", 7497)  # Default paper trading port
-                client_id = config.get("client_id", 1)
-                self.logger.info(f"Connecting to Interactive Brokers at {host}:{port} with client ID {client_id}")
-                broker = BrokerFactory.create_broker(broker_type, host=host, port=port, client_id=client_id)
-            else:
-                self.logger.debug(f"Creating broker with config: {config}")
-                broker = BrokerFactory.create_broker(broker_type, **config)
+            self.logger.info(f"Creating broker of type: {broker_type} with config: {config}")
+            # Create broker instance with config
+            broker = BrokerFactory.create_broker(broker_type, **config)
 
             # Connect the broker
             self.logger.info(f"Connecting to {broker_type}...")
@@ -83,6 +97,25 @@ class TradingSystem:
             return True
         return False
 
+    def shutdown(self):
+        """Shutdown the trading system"""
+        self.logger.info("Shutting down trading system...")
+        
+        # Stop event engine
+        if hasattr(self, 'event_engine'):
+            self.event_engine.stop()
+
+        for name, broker in self.brokers.items():
+            try:
+                broker.disconnect()
+                self.logger.info(f"Disconnected from broker '{name}'")
+            except Exception as e:
+                self.logger.error(f"Error disconnecting from broker '{name}': {e}", exc_info=True)
+
+        self.brokers.clear()
+        self.is_running = False
+        self.logger.info("Trading system shutdown complete")
+
     def get_historical_data(
         self,
         symbol: str,
@@ -109,7 +142,16 @@ class TradingSystem:
     ) -> bool:
         """Subscribe to real-time market data"""
         contract = Contract(symbol=symbol, security_type=security_type, exchange=exchange, currency=currency)
-        return self.data_manager.subscribe_real_time_data(contract, callback, broker_name)
+        
+        # Create non-blocking producer callback
+        def producer_callback(tick: TickData):
+            event = Event(EventType.TICK, {"tick": tick, "callback": callback})
+            self.event_engine.put(event)
+            
+        # Call data manager with store_data=False (handled by event engine)
+        return self.data_manager.subscribe_real_time_data(
+            contract, producer_callback, broker_name, store_data=False
+        )
 
     def get_option_chain(self, broker_name: str, contract: Contract) -> OptionChain:
         return self.data_manager.get_option_chain(broker_name, contract)

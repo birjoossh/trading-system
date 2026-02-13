@@ -36,7 +36,7 @@ logger = get_logger(__name__)
 class IBBroker(BrokerInterface):
     """Interactive Brokers implementation"""
 
-    def __init__(self, host, port, client_id=1):
+    def __init__(self, host="127.0.0.1", port=7497, client_id=1):
         logger.info("Initializing IBBroker...")
         super().__init__()
         if not IB_AVAILABLE:

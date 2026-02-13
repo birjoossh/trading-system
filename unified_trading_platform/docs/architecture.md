@@ -1,7 +1,7 @@
 # System Architecture
 
 ## Overview
-The Modular Trading System is designed with a layered architecture to ensure separation of concerns, modularity, and testability.
+The Modular Trading System is designed with a layered architecture to ensure separation of concerns. It employs an **Event-Driven Architecture** for market data processing to ensure that high-frequency broker callbacks do not block the main application logic.
 
 ```mermaid
 graph TD
@@ -9,6 +9,7 @@ graph TD
         TS[TradingSystem] --> BF[BrokerFactory]
         TS --> DM[DataManager]
         TS --> OM[OrderManager]
+        TS --> EE[EventEngine]
     end
 
     subgraph "Broker Layer"
@@ -23,6 +24,8 @@ graph TD
         DM --> DB[(SQLite DB)]
         DM --> Cache[Memory Cache]
     end
+
+    EE -->|Async Event| DM
 
     subgraph "Configuration"
         Config[config.yaml] --> Settings[Settings Model]
