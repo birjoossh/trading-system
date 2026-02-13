@@ -16,6 +16,7 @@ A comprehensive, modular Python trading system designed to work with Interactive
 sequenceDiagram
     participant User
     participant TradingSystem
+    participant EventEngine
     participant BrokerFactory
     participant IBBroker
     
@@ -30,7 +31,8 @@ sequenceDiagram
     IBBroker-->>TradingSystem: reqId
     
     loop Market Data Stream
-        IBBroker->>TradingSystem: callback(tick_data)
+        IBBroker->>EventEngine: put(tick_event)
+        EventEngine->>TradingSystem: process(tick_event)
         TradingSystem->>User: callback(tick_data)
     end
 ```
@@ -43,6 +45,7 @@ graph TD
     
     OM -->|Route Order| BF[BrokerFactory]
     DM -->|Request Data| BF
+    DM -->|Subsribe| EE[EventEngine]
     
     BF -->|Create| IB[IBBroker]
     
@@ -57,7 +60,8 @@ graph TD
     end
     
     IB -->|Order Updates| OM
-    IB -->|Market Data| DM
+    IB -->|Market Data| EE
+    EE -->|Async Event| DM
 ```
 
 - **Broker Abstraction Layer**: Unified interface for different brokers

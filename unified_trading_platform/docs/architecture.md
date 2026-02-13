@@ -150,9 +150,17 @@ classDiagram
         +simulate_market()
     }
 
+    class EventEngine {
+        +put(event)
+        +start()
+        +stop()
+        +register(type, handler)
+    }
+
     TradingSystem --> BrokerFactory
     TradingSystem --> DataManager
     TradingSystem --> OrderManager
+    TradingSystem --> EventEngine
     
     BrokerFactory ..> BrokerInterface : Creates
     IBBroker --|> BrokerInterface
@@ -163,4 +171,6 @@ classDiagram
     
     StrategyManager --> TradingSystem : Uses
     StrategyManager --> StrategyEngine : Uses (Backtest)
+    
+    EventEngine ..> DataManager : Async Updates
 ```
