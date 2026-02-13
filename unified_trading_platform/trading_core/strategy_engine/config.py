@@ -107,8 +107,10 @@ class StrategyConfig:
     square_off_mode: str = "Partial"
     trail_to_be: TrailToBE = dc.field(default_factory=TrailToBE)
     lot_size: int = 50
-    symbol: str = "NIFTY 50"
-    currency: str = "INR"
+    symbol: str = dc.field(default_factory=lambda: (_ for _ in ()).throw(
+        ValueError("symbol must be specified in strategy config JSON (e.g. 'NIFTY 50')")))
+    currency: str = dc.field(default_factory=lambda: (_ for _ in ()).throw(
+        ValueError("currency must be specified in strategy config JSON (e.g. 'INR')")))
     legs: List[LegSpec] = dc.field(default_factory=list)
     costs: Dict = dc.field(default_factory=lambda: {"per_lot_roundtrip": 0.0, "slippage_per_fill": 0.0})
 
@@ -208,6 +210,18 @@ def load_strategy_config(strategy_name: str, strategies_dir: str = None) -> Stra
         trigger=trail_to_be_dict.get("trigger", {"mode": "percent", "value": 30}),
     )
 
+    # Validate required fields
+    if "symbol" not in config_dict:
+        raise ValueError(
+            f"Strategy '{strategy_name}' is missing required 'symbol' field. "
+            "Add e.g. '\"symbol\": \"NIFTY 50\"' to the JSON."
+        )
+    if "currency" not in config_dict:
+        raise ValueError(
+            f"Strategy '{strategy_name}' is missing required 'currency' field. "
+            "Add e.g. '\"currency\": \"INR\"' to the JSON."
+        )
+
     return StrategyConfig(
         strategy_type=config_dict.get("strategy_type", "Intraday"),
         underlying_from=config_dict.get("underlying_from", "Cash"),
@@ -218,6 +232,8 @@ def load_strategy_config(strategy_name: str, strategies_dir: str = None) -> Stra
         square_off_mode=config_dict.get("square_off_mode", "Partial"),
         trail_to_be=trail_to_be,
         lot_size=config_dict.get("lot_size", 50),
+        symbol=config_dict["symbol"],
+        currency=config_dict["currency"],
         legs=legs,
         costs=config_dict.get("costs", {"per_lot_roundtrip": 0.0, "slippage_per_fill": 0.0}),
     )

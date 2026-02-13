@@ -181,33 +181,6 @@ class LiveLeg:
         self.re_sl_count = 0  ## re-entry stop loss count
         self.re_tgt_count = 0  ## re-entry target count
 
-    # def __str__(self):
-    #     return (
-    #         f"LiveLeg(id={self.leg_id}, "
-    #         f"{self.spec.position} {self.spec.option_type} @ {self.strike}, "
-    #         f"Qty: {self.qty}, "
-    #         f"Entry S: {self.entry_S if self.entry_S is not None else 'None'}, "
-    #         f"Entry: {self.entry_px if self.entry_px is not None else 'None'}, "
-    #         f"Exit: {self.exit_px if self.exit_px is not None else 'None'}, "
-    #         f"Entry TS: {self.entry_ts if self.entry_ts is not None else 'None'}, "
-    #         f"Exit TS: {self.exit_ts if self.exit_ts is not None else 'None'}, "
-    #         f"Expiry Date: {self.expiry_date if self.expiry_date is not None else 'None'}, "
-    #         f"Hit SL: {self.hit_sl}, "
-    #         f"Hit Target: {self.hit_target}, "
-    #         f"Hit Trail: {self.hit_trail}, "
-    #         f"Best Fav PX: {self.best_fav_px if self.best_fav_px is not None else 'None'}, "
-    #         f"Re-entry ID: {self.reentry_id}, "
-    #         f"Re-entry SL Count: {self.re_sl_count}, "
-    #         f"Re-entry TGT Count: {self.re_tgt_count}, "
-    #         f"PnL: {self.pnl:.2f}, "
-    #         f"Status: {'Open' if self.entry_ts and not self.exit_ts else 'Closed' if self.exit_ts else 'Pending'}, "
-    #         f"Exit Reason: {self.exit_reason or 'N/A'})"
-    #         f"Spec: {self.spec}")
-
-    # def __repr__(self):
-    #     return self.__str__()
-
-
 def _is_short(position: str) -> bool:
     return str(position).lower().startswith("sell")
 

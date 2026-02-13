@@ -94,12 +94,12 @@ class H5DataReader:
             return pd.DataFrame(data)
         return data
 
-    def read_spot_series(self, symbol: str = "NIFTY") -> pd.DataFrame:
+    def read_spot_series(self, symbol: str) -> pd.DataFrame:
         """
         Read spot price series from H5 file
 
         Args:
-            symbol: Symbol to read (default: NIFTY)
+            symbol: Symbol to read (e.g. 'NIFTY')
 
         Returns:
             DataFrame with timestamp index and price data
@@ -138,12 +138,12 @@ class H5DataReader:
 
         raise ValueError(f"Could not find spot data for {symbol} in any expected path")
 
-    def read_futures_series(self, symbol: str = "NIFTY", expiry: Optional[str] = None) -> pd.DataFrame:
+    def read_futures_series(self, symbol: str, expiry: Optional[str] = None) -> pd.DataFrame:
         """
         Read futures price series from H5 file
 
         Args:
-            symbol: Symbol to read (default: NIFTY)
+            symbol: Symbol to read (e.g. 'NIFTY')
             expiry: Specific expiry to read (optional)
 
         Returns:
@@ -184,12 +184,12 @@ class H5DataReader:
 
         raise ValueError(f"Could not find futures data for {symbol} in any expected path")
 
-    def read_options_table(self, symbol: str = "NIFTY", date_filter: Optional[date] = None) -> pd.DataFrame:
+    def read_options_table(self, symbol: str, date_filter: Optional[date] = None) -> pd.DataFrame:
         """
         Read options chain data from H5 file
 
         Args:
-            symbol: Symbol to read (default: NIFTY)
+            symbol: Symbol to read (e.g. 'NIFTY')
             date_filter: Filter by specific date (optional)
 
         Returns:

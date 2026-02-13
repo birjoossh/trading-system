@@ -402,7 +402,7 @@ class StrategyManager:
             symbol = meta["Symbol"]
             rows.append(
                 {
-                    "underlying_symbol": symbol.split("2")[0] if isinstance(symbol, str) else "NIFTY",
+                    "underlying_symbol": symbol.split("2")[0] if isinstance(symbol, str) else self.strategy_config.symbol,
                     "expiry": meta["Expiry"],
                     "strike": strike,
                     "option_type": opt_type,
