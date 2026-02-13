@@ -2,21 +2,24 @@
 Interactive Brokers broker implementation.
 Implements the BrokerInterface for IB TWS/Gateway API.
 """
+
 import threading
 import time
 from typing import Dict, List, Callable, Any
 from datetime import datetime
+
 try:
     from ibapi.common import MarketDataTypeEnum
     from ibapi.contract import Contract as IBContract
     from ibapi.order import Order as IBOrder
+
     IB_AVAILABLE = True
 except ImportError:
     IB_AVAILABLE = False
 
 from unified_trading_platform.trading_core.brokers.base_broker import BrokerInterface
 from unified_trading_platform.trading_core.data_models import Contract
-from unified_trading_platform.trading_core.data_models import (Order, OrderStatus, OrderType)
+from unified_trading_platform.trading_core.data_models import Order, OrderStatus, OrderType
 from unified_trading_platform.trading_core.data_models import OptionChain
 from unified_trading_platform.trading_core.data_models import TickData
 
@@ -28,6 +31,7 @@ from unified_trading_platform.trading_core.utils.logger import get_logger
 
 # Initialize logger
 logger = get_logger(__name__)
+
 
 class IBBroker(BrokerInterface):
     """Interactive Brokers implementation"""
@@ -52,7 +56,7 @@ class IBBroker(BrokerInterface):
         self.account_info = {}  # unimplemented
         self.accounts = []
         self.option_chains = {}  # Cache for option chains
-        self.requestid_cachekey = {} # a dict map the req id to option cache key
+        self.requestid_cachekey = {}  # a dict map the req id to option cache key
         self.greeks_data = {}  # Cache for Greeks data
         self.market_data_type = MarketDataTypeEnum.DELAYED  # Default to delayed
         self._api_thread = None
@@ -67,25 +71,25 @@ class IBBroker(BrokerInterface):
         if self.is_connected:
             logger.info("Already connected to IB")
             return True
-        
+
         self._connected_event.clear()
         try:
             self.client.connect(self.host, self.port, self.client_id)
             logger.debug("Connection request sent to IB...")
-            
+
             # Start API thread
             self._api_thread = threading.Thread(target=self.client.run, daemon=True)
             self._api_thread.start()
-            
+
             # Wait for connection with timeout
             if not self._connected_event.wait(timeout=20):
                 logger.error("Connection timeout - IB did not respond within 20 seconds")
                 try:
                     self.client.disconnect()
                 except Exception:
-                   pass
+                    pass
                 return False
-                
+
             self.is_connected = True
             logger.info(f"Successfully connected to IB at {self.host}:{self.port} with client ID {self.client_id}")
 
@@ -144,9 +148,13 @@ class IBBroker(BrokerInterface):
 
     def _create_ib_order(self, order: Order) -> IBOrder:
         """Convert our Order to IB Order"""
-        if order.order_type in (OrderType.LIMIT, OrderType.STOP_LIMIT) and (order.limit_price is None or order.limit_price <= 0):
+        if order.order_type in (OrderType.LIMIT, OrderType.STOP_LIMIT) and (
+            order.limit_price is None or order.limit_price <= 0
+        ):
             raise ValueError("limit_price must be positive for LIMIT/STOP_LIMIT orders")
-        if order.order_type in (OrderType.STOP, OrderType.STOP_LIMIT) and (order.stop_price is None or order.stop_price <= 0):
+        if order.order_type in (OrderType.STOP, OrderType.STOP_LIMIT) and (
+            order.stop_price is None or order.stop_price <= 0
+        ):
             raise ValueError("stop_price must be positive for STOP/STOP_LIMIT orders")
         ib_order = IBOrder()
         ib_order.action = order.action.value
@@ -167,8 +175,9 @@ class IBBroker(BrokerInterface):
         ib_order.eTradeOnly = False
         return ib_order
 
-    def get_historical_data(self, contract: Contract, duration: str,
-                          bar_size: str, what_to_show: str = "TRADES") -> List[TickData]:
+    def get_historical_data(
+        self, contract: Contract, duration: str, bar_size: str, what_to_show: str = "TRADES"
+    ) -> List[TickData]:
         """Get historical bar data"""
         if not self.is_connected:
             raise Exception("Not connected to broker")
@@ -179,15 +188,13 @@ class IBBroker(BrokerInterface):
         ib_contract = CommonMixin.create_ib_contract(contract)
         try:
             # Request historical data
-            self.client.reqHistoricalData(
-                req_id, ib_contract, "", duration, bar_size, what_to_show, 1, 1, False, []
-            )
+            self.client.reqHistoricalData(req_id, ib_contract, "", duration, bar_size, what_to_show, 1, 1, False, [])
 
             # Wait for data
             timeout = 30
             start_time = time.time()
             while len(self.historical_data[req_id]) == 0 and (time.time() - start_time) < timeout:
-                time.sleep(1) # sleep 1 sec
+                time.sleep(1)  # sleep 1 sec
 
             # Convert to our TickData format
             bars = []
@@ -203,7 +210,7 @@ class IBBroker(BrokerInterface):
                         high=bar.high,
                         low=bar.low,
                         close=bar.close,
-                        volume=bar.volume
+                        volume=bar.volume,
                     )
                     bars.append(bar_data)
                 except (ValueError, AttributeError) as e:
@@ -231,17 +238,17 @@ class IBBroker(BrokerInterface):
 
         # Store order info
         self.orders[order_id] = {
-            'contract': contract,
-            'order': order,
-            'status': OrderStatus.PENDING,
-            'filled': 0,
-            'remaining': order.quantity,
-            'avg_fill_price': 0.0,
-            'timestamp': datetime.now()
+            "contract": contract,
+            "order": order,
+            "status": OrderStatus.PENDING,
+            "filled": 0,
+            "remaining": order.quantity,
+            "avg_fill_price": 0.0,
+            "timestamp": datetime.now(),
         }
 
         try:
-        # Submit order
+            # Submit order
             self.client.placeOrder(int(order_id), ib_contract, ib_order)
             return order_id
         except Exception as e:
@@ -284,43 +291,39 @@ class IBBroker(BrokerInterface):
 
     def subscribe_market_data(self, contract: Contract, callback: Callable, **kwargs):
         self.market_data.subscribe_market_data(contract, callback, **kwargs)
-      
+
     def unsubscribe_market_data(self, subscription_id: str) -> bool:
         self.market_data.unsubscribe_market_data(subscription_id)
 
     def get_market_data_subscriptions(self) -> List[str]:
         return self.market_data.get_market_data_subscriptions()
-    
+
     def get_contract_details(self, contract: Contract) -> Dict[str, Any]:
         if not self.is_connected:
             raise Exception("Not connected to broker")
-            
+
         req_id = len(self.client.pending_contract_details) + 5000
         response_received = threading.Event()
-        self.client.pending_contract_details[req_id] = {
-            'event': response_received,
-            'details': None,
-            'error': None
-        }
+        self.client.pending_contract_details[req_id] = {"event": response_received, "details": None, "error": None}
         try:
             ib_contract = self._create_ib_contract(contract)
             self.client.reqContractDetails(req_id, ib_contract)
-            
+
             # Wait for response with timeout (10 seconds)
             if not response_received.wait(timeout=10):
                 raise TimeoutError("Timed out waiting for contract details")
-                
+
             # Get the result
             if req_id in self.client.pending_contract_details:
                 result = self.client.pending_contract_details[req_id]
-                if result['error']:
+                if result["error"]:
                     raise Exception(f"Error getting contract details: {result['error']}")
-                if not result['details']:
+                if not result["details"]:
                     raise Exception("No contract details found")
-                return result['details']
-                
+                return result["details"]
+
             raise Exception("Failed to get contract details")
-            
+
         except Exception as e:
             if req_id in self.client.pending_contract_details:
                 del self.client.pending_contract_details[req_id]

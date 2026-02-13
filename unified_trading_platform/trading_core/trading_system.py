@@ -5,7 +5,6 @@ Provides a unified interface for algorithmic trading across multiple brokers.
 
 from typing import Dict, List, Optional, Callable, Any
 from datetime import datetime
-import pandas as pd
 
 from unified_trading_platform.trading_core.utils import get_logger
 
@@ -13,8 +12,15 @@ from unified_trading_platform.trading_core.brokers.broker_factory import BrokerF
 from unified_trading_platform.trading_core.data.data_manager import DataManager
 from unified_trading_platform.trading_core.orders.order_manager import OrderManager
 from unified_trading_platform.trading_core.data_models import (
-    Contract, Order, OrderType, OrderAction, SecurityType, TickData, OptionChain
+    Contract,
+    Order,
+    OrderType,
+    OrderAction,
+    SecurityType,
+    TickData,
+    OptionChain,
 )
+
 
 class TradingSystem:
     """Main trading system class"""
@@ -22,33 +28,34 @@ class TradingSystem:
     def __init__(self, db_path: str = "trading_system2.db"):
         # Initialize logger
         self.logger = get_logger(__name__)
-        
+
         self.data_manager = DataManager(db_path)
         self.order_manager = OrderManager(db_path)
         self.brokers = {}
         self.strategies = {}
         self.is_running = False
-        
+
         # Set up order submission callback
         def log_order_submission(args: Dict[str, Any]) -> None:
             self.logger.info(f"Order submitted: {args}")
-        self.order_manager.callbacks['order_submitted'].append(log_order_submission)
+
+        self.order_manager.callbacks["order_submitted"].append(log_order_submission)
 
     def add_broker(self, name: str, broker_type: str, **config) -> bool:
         """Add a broker to the system"""
         try:
             self.logger.info(f"Creating broker of type: {broker_type}")
             # Create broker instance with required parameters
-            if broker_type.lower() == 'interactive_brokers' or broker_type.lower() == 'ib':
-                host = config.get('host', '127.0.0.1')
-                port = config.get('port', 7497)  # Default paper trading port
-                client_id = config.get('client_id', 1)
+            if broker_type.lower() == "interactive_brokers" or broker_type.lower() == "ib":
+                host = config.get("host", "127.0.0.1")
+                port = config.get("port", 7497)  # Default paper trading port
+                client_id = config.get("client_id", 1)
                 self.logger.info(f"Connecting to Interactive Brokers at {host}:{port} with client ID {client_id}")
                 broker = BrokerFactory.create_broker(broker_type, host=host, port=port, client_id=client_id)
             else:
                 self.logger.debug(f"Creating broker with config: {config}")
                 broker = BrokerFactory.create_broker(broker_type, **config)
-            
+
             # Connect the broker
             self.logger.info(f"Connecting to {broker_type}...")
             if broker.connect():
@@ -76,71 +83,72 @@ class TradingSystem:
             return True
         return False
 
-    def get_historical_data(self, symbol: str, exchange: str,
-                          security_type: SecurityType = SecurityType.STOCK, currency: str = "USD",
-                          duration: str = "1 D", bar_size: str = "1H",
-                          broker_name: Optional[str] = None) -> List[TickData]:
+    def get_historical_data(
+        self,
+        symbol: str,
+        exchange: str,
+        security_type: SecurityType = SecurityType.STOCK,
+        currency: str = "USD",
+        duration: str = "1 D",
+        bar_size: str = "1H",
+        broker_name: Optional[str] = None,
+    ) -> List[TickData]:
         """Get historical data for a symbol"""
-        contract = Contract(
-            symbol=symbol,
-            security_type=security_type,
-            exchange=exchange,
-            currency=currency
-        )
+        contract = Contract(symbol=symbol, security_type=security_type, exchange=exchange, currency=currency)
 
-        return self.data_manager.get_historical_data(
-            contract, duration, bar_size, broker_name, False
-        )
+        return self.data_manager.get_historical_data(contract, duration, bar_size, broker_name, False)
 
-    def subscribe_market_data(self, symbol: str, exchange: str,
-                            callback: Callable, security_type: SecurityType = SecurityType.STOCK,
-                            currency: str = "USD", broker_name: Optional[str] = None) -> bool:
+    def subscribe_market_data(
+        self,
+        symbol: str,
+        exchange: str,
+        callback: Callable,
+        security_type: SecurityType = SecurityType.STOCK,
+        currency: str = "USD",
+        broker_name: Optional[str] = None,
+    ) -> bool:
         """Subscribe to real-time market data"""
-        contract = Contract(
-            symbol=symbol,
-            security_type=security_type,
-            exchange=exchange,
-            currency=currency
-        )
-        return self.data_manager.subscribe_real_time_data(
-            contract, callback, broker_name
-        )
-    
+        contract = Contract(symbol=symbol, security_type=security_type, exchange=exchange, currency=currency)
+        return self.data_manager.subscribe_real_time_data(contract, callback, broker_name)
+
     def get_option_chain(self, broker_name: str, contract: Contract) -> OptionChain:
         return self.data_manager.get_option_chain(broker_name, contract)
 
-    def submit_market_order(self, symbol: str, exchange: str, action: str,
-                          quantity: int, broker_name: str,
-                          security_type: SecurityType = SecurityType.STOCK, currency: str = "USD",
-                          account: Optional[str] = None) -> str:
+    def submit_market_order(
+        self,
+        symbol: str,
+        exchange: str,
+        action: str,
+        quantity: int,
+        broker_name: str,
+        security_type: SecurityType = SecurityType.STOCK,
+        currency: str = "USD",
+        account: Optional[str] = None,
+    ) -> str:
         """Submit a market order"""
-        contract = Contract(
-            symbol=symbol,
-            security_type=security_type,
-            exchange=exchange,
-            currency=currency
-        )
+        contract = Contract(symbol=symbol, security_type=security_type, exchange=exchange, currency=currency)
 
         order = Order(
-            action=OrderAction(action.upper()),
-            quantity=quantity,
-            order_type=OrderType.MARKET,
-            account=account
+            action=OrderAction(action.upper()), quantity=quantity, order_type=OrderType.MARKET, account=account
         )
 
         return self.order_manager.submit_order(contract, order, broker_name)
 
-    def submit_limit_order(self, symbol: str, exchange: str, action: str,
-                         quantity: int, limit_price: float, broker_name: str,
-                         security_type: SecurityType = SecurityType.STOCK, currency: str = "USD",
-                         time_in_force: str = "DAY", account: Optional[str] = None) -> str:
+    def submit_limit_order(
+        self,
+        symbol: str,
+        exchange: str,
+        action: str,
+        quantity: int,
+        limit_price: float,
+        broker_name: str,
+        security_type: SecurityType = SecurityType.STOCK,
+        currency: str = "USD",
+        time_in_force: str = "DAY",
+        account: Optional[str] = None,
+    ) -> str:
         """Submit a limit order"""
-        contract = Contract(
-            symbol=symbol,
-            security_type=security_type,
-            exchange=exchange,
-            currency=currency
-        )
+        contract = Contract(symbol=symbol, security_type=security_type, exchange=exchange, currency=currency)
 
         order = Order(
             action=OrderAction(action.upper()),
@@ -148,22 +156,26 @@ class TradingSystem:
             order_type=OrderType.LIMIT,
             limit_price=limit_price,
             time_in_force=time_in_force,
-            account=account
+            account=account,
         )
 
         return self.order_manager.submit_order(contract, order, broker_name)
 
-    def submit_stop_order(self, symbol: str, exchange: str, action: str,
-                        quantity: int, stop_price: float, broker_name: str,
-                        security_type: SecurityType = SecurityType.STOCK, currency: str = "USD",
-                        time_in_force: str = "DAY", account: Optional[str] = None) -> str:
+    def submit_stop_order(
+        self,
+        symbol: str,
+        exchange: str,
+        action: str,
+        quantity: int,
+        stop_price: float,
+        broker_name: str,
+        security_type: SecurityType = SecurityType.STOCK,
+        currency: str = "USD",
+        time_in_force: str = "DAY",
+        account: Optional[str] = None,
+    ) -> str:
         """Submit a stop order"""
-        contract = Contract(
-            symbol=symbol,
-            security_type=security_type,
-            exchange=exchange,
-            currency=currency
-        )
+        contract = Contract(symbol=symbol, security_type=security_type, exchange=exchange, currency=currency)
 
         order = Order(
             action=OrderAction(action.upper()),
@@ -171,7 +183,7 @@ class TradingSystem:
             order_type=OrderType.STOP,
             stop_price=stop_price,
             time_in_force=time_in_force,
-            account=account
+            account=account,
         )
 
         return self.order_manager.submit_order(contract, order, broker_name)
@@ -185,18 +197,18 @@ class TradingSystem:
         order = self.order_manager.get_order(order_id)
         if order:
             return {
-                'order_id': order.order_id,
-                'broker_order_id': order.broker_order_id,
-                'symbol': order.contract.symbol,
-                'action': order.order.action.value,
-                'quantity': order.order.quantity,
-                'order_type': order.order.order_type.value,
-                'status': order.status.value,
-                'filled_quantity': order.filled_quantity,
-                'remaining_quantity': order.remaining_quantity,
-                'avg_fill_price': order.avg_fill_price,
-                'created_at': order.created_at,
-                'updated_at': order.updated_at
+                "order_id": order.order_id,
+                "broker_order_id": order.broker_order_id,
+                "symbol": order.contract.symbol,
+                "action": order.order.action.value,
+                "quantity": order.order.quantity,
+                "order_type": order.order.order_type.value,
+                "status": order.status.value,
+                "filled_quantity": order.filled_quantity,
+                "remaining_quantity": order.remaining_quantity,
+                "avg_fill_price": order.avg_fill_price,
+                "created_at": order.created_at,
+                "updated_at": order.updated_at,
             }
         return {}
 
@@ -205,18 +217,18 @@ class TradingSystem:
         orders = self.order_manager.get_orders()
         return [
             {
-                'order_id': order.order_id,
-                'broker_order_id': order.broker_order_id,
-                'symbol': order.contract.symbol,
-                'action': order.order.action.value,
-                'quantity': order.order.quantity,
-                'order_type': order.order.order_type.value,
-                'status': order.status.value,
-                'filled_quantity': order.filled_quantity,
-                'remaining_quantity': order.remaining_quantity,
-                'avg_fill_price': order.avg_fill_price,
-                'created_at': order.created_at,
-                'updated_at': order.updated_at
+                "order_id": order.order_id,
+                "broker_order_id": order.broker_order_id,
+                "symbol": order.contract.symbol,
+                "action": order.order.action.value,
+                "quantity": order.order.quantity,
+                "order_type": order.order.order_type.value,
+                "status": order.status.value,
+                "filled_quantity": order.filled_quantity,
+                "remaining_quantity": order.remaining_quantity,
+                "avg_fill_price": order.avg_fill_price,
+                "created_at": order.created_at,
+                "updated_at": order.updated_at,
             }
             for order in orders
         ]
@@ -235,15 +247,15 @@ class TradingSystem:
         """Register callback for order events"""
         self.order_manager.register_callback(event_type, callback)
 
-    def get_order_history(self, symbol: Optional[str] = None,
-                         start_date: Optional[datetime] = None,
-                         end_date: Optional[datetime] = None) -> List[Dict]:
+    def get_order_history(
+        self, symbol: Optional[str] = None, start_date: Optional[datetime] = None, end_date: Optional[datetime] = None
+    ) -> List[Dict]:
         """Get order history"""
         return self.order_manager.get_order_history(symbol, start_date, end_date)
 
-    def get_trade_history(self, symbol: Optional[str] = None,
-                         start_date: Optional[datetime] = None,
-                         end_date: Optional[datetime] = None) -> List[Dict]:
+    def get_trade_history(
+        self, symbol: Optional[str] = None, start_date: Optional[datetime] = None, end_date: Optional[datetime] = None
+    ) -> List[Dict]:
         """Get trade history"""
         return self.order_manager.get_trade_history(symbol, start_date, end_date)
 

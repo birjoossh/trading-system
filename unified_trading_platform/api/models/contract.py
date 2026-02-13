@@ -12,25 +12,17 @@ class ContractRequest(BaseModel):
     """Contract specification for requests"""
 
     symbol: str
-    exchange: str = Field(
-        default_factory=lambda: get_config_value("contract.default_exchange", "")
-    )
+    exchange: str = Field(default_factory=lambda: get_config_value("contract.default_exchange", ""))
     security_type: str = Field(
-        default_factory=lambda: get_config_value(
-            "contract.default_security_type", "STK"
-        ),
+        default_factory=lambda: get_config_value("contract.default_security_type", "STK"),
         description="STK, OPT, FUT, etc.",
     )
     currency: str = Field(
         default_factory=lambda: get_config_value("contract.default_currency", "USD"),
         description="Currency code",
     )
-    expiry: Optional[str] = Field(
-        default=None, description="Expiry date for options/futures (YYYYMMDD)"
-    )
-    strike: Optional[float] = Field(
-        default=None, description="Strike price for options"
-    )
+    expiry: Optional[str] = Field(default=None, description="Expiry date for options/futures (YYYYMMDD)")
+    strike: Optional[float] = Field(default=None, description="Strike price for options")
     right: Optional[str] = Field(default=None, description="PUT or CALL for options")
     multiplier: Optional[str] = Field(default=None, description="Contract multiplier")
 

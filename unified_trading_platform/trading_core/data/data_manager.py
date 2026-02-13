@@ -10,13 +10,12 @@ from dataclasses import asdict
 import sqlite3
 
 from unified_trading_platform.trading_core.utils import get_logger
-from unified_trading_platform.trading_core.data_models import (
-    TickData, OptionChain, Contract
-)
+from unified_trading_platform.trading_core.data_models import TickData, OptionChain, Contract
 from unified_trading_platform.trading_core.brokers.base_broker import BrokerInterface
 
 # Initialize logger
 logger = get_logger(__name__)
+
 
 class DataManager:
     """Manages market data storage and retrieval"""
@@ -70,17 +69,23 @@ class DataManager:
         """Add a broker for data retrieval"""
         self.brokers[name] = broker
 
-    def get_historical_data(self, contract: Contract, duration: str, bar_size: str,
-                          broker_name: Optional[str] = None, use_cache: bool = True) -> List[TickData]:
+    def get_historical_data(
+        self,
+        contract: Contract,
+        duration: str,
+        bar_size: str,
+        broker_name: Optional[str] = None,
+        use_cache: bool = True,
+    ) -> List[TickData]:
         """Get historical tick data
-        
+
         Args:
             contract: The contract to get data for
             duration: Duration of data to fetch (e.g., '1 D', '1 W', '1 M')
             bar_size: Bar size (e.g., '1 min', '5 mins', '1 hour')
             broker_name: Optional name of the broker to use
             use_cache: Whether to use cached data if available
-            
+
         Returns:
             List of TickData objects containing the historical data
         """
@@ -93,7 +98,7 @@ class DataManager:
         # Get from broker
         broker = self._get_broker(broker_name)
         bars = broker.get_historical_data(contract, duration, bar_size)
-        
+
         # Cache the data if needed
         if use_cache and bars:
             self._cache_bars(bars)
@@ -105,57 +110,60 @@ class DataManager:
 
     def _cache_bars(self, bars: List[TickData]):
         """Cache a list of TickData objects to the database
-        
+
         Args:
             bars: List of TickData objects to cache
         """
         if not bars:
             return
-            
+
         # Convert TickData list to DataFrame
-        data = [{
-            'symbol': bar.symbol,
-            'exchange': bar.exchange,
-            'security_type': bar.security_type,
-            'currency': bar.currency,
-            'timestamp': bar.timestamp,
-            'open': bar.open,
-            'high': bar.high,
-            'low': bar.low,
-            'close': bar.close,
-            'volume': bar.volume,
-            'bar_size': bar.bar_size if hasattr(bar, 'bar_size') else '1 min',
-            'bid': bar.bid,
-            'ask': bar.ask,
-            'open_interest': bar.open_interest,
-            'vwap': bar.vwap,
-            'last': bar.last if hasattr(bar, 'last') else bar.close
-        } for bar in bars]
+        data = [
+            {
+                "symbol": bar.symbol,
+                "exchange": bar.exchange,
+                "security_type": bar.security_type,
+                "currency": bar.currency,
+                "timestamp": bar.timestamp,
+                "open": bar.open,
+                "high": bar.high,
+                "low": bar.low,
+                "close": bar.close,
+                "volume": bar.volume,
+                "bar_size": getattr(bar, "bar_size", "1 min"),
+                "bid": bar.bid,
+                "ask": bar.ask,
+                "open_interest": bar.open_interest,
+                "vwap": getattr(bar, "vwap", None),
+                "last": bar.last if hasattr(bar, "last") else bar.close,
+            }
+            for bar in bars
+        ]
         df = pd.DataFrame(data)
-        df.set_index('timestamp', inplace=True)
-        
+        df.set_index("timestamp", inplace=True)
+
         with sqlite3.connect(self.db_path) as conn:
-            df.to_sql('historical_bars', conn, if_exists='append', index=True, index_label="timestamp")
+            df.to_sql("historical_bars", conn, if_exists="append", index=True, index_label="timestamp")
 
     def _get_cached_bars(self, contract: Contract, bar_size: str, duration: str) -> List[TickData]:
         """Retrieve cached bar data as a list of TickData
-        
+
         Args:
             contract: The contract to get data for
             bar_size: Bar size (e.g., '1 min', '5 mins')
             duration: Duration of data to fetch (e.g., '1 D', '1 W')
-            
+
         Returns:
             List of TickData objects containing the historical data
         """
         # Calculate date range based on duration
         end_date = datetime.now()
-        if 'D' in duration:
+        if "D" in duration:
             days = int(duration.split()[0])
             start_date = end_date - timedelta(days=days)
-        elif 'M' in duration:
+        elif "M" in duration:
             months = int(duration.split()[0])
-            start_date = end_date - timedelta(days=months*30)  # Approximate
+            start_date = end_date - timedelta(days=months * 30)  # Approximate
         else:
             start_date = end_date - timedelta(days=30)  # Default
 
@@ -171,16 +179,14 @@ class DataManager:
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
             cursor.execute(
-                query,
-                [contract.symbol, contract.exchange, bar_size,
-                 start_date.isoformat(), end_date.isoformat()]
+                query, [contract.symbol, contract.exchange, bar_size, start_date.isoformat(), end_date.isoformat()]
             )
-            
+
             for row in cursor.fetchall():
                 tick_data = TickData(
                     timestamp=row[0],
                     exchange=contract.exchange,
-                    security_type=contract.sec_type,
+                    security_type=contract.security_type,
                     symbol=contract.symbol,
                     currency=contract.currency,
                     open=row[1],
@@ -189,17 +195,18 @@ class DataManager:
                     close=row[4],
                     volume=row[5],
                     bid=row[6],  # bid from query with COALESCE
-                    ask=row[7],   # ask from query with COALESCE
+                    ask=row[7],  # ask from query with COALESCE
                     open_interest=row[8],  # open_interest from query with COALESCE
                     vwap=row[9],  # vwap from query with COALESCE
-                    last=row[10]  # last from query with COALESCE
+                    last=row[10],  # last from query with COALESCE
                 )
                 tick_data_list.append(tick_data)
-                
+
         return tick_data_list
 
-    def subscribe_real_time_data(self, contract: Contract, callback: Callable,
-                                 broker_name: Optional[str] = None) -> bool:
+    def subscribe_real_time_data(
+        self, contract: Contract, callback: Callable, broker_name: Optional[str] = None
+    ) -> bool:
         """Subscribe to real-time market data and store in DB and/or notify subscribers.
 
         Args:
@@ -217,6 +224,7 @@ class DataManager:
             self._store_tick_data(tick_data)
             # Forward to user's callback
             callback(tick_data)
+
         # Use broker to subscribe
         logger.info(f"Subscribing to market data for {asdict(contract)}")
         return broker.subscribe_market_data(contract, storage_and_user_callback)
@@ -238,6 +246,6 @@ class DataManager:
                     tick_data.bid,
                     tick_data.ask,
                     tick_data.last,
-                    tick_data.volume
-                )
+                    tick_data.volume,
+                ),
             )

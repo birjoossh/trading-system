@@ -1,106 +1,78 @@
 """
 API Configuration Loader
-Loads default values from api_config.yaml
+Wraps the unified settings from trading_core.config.config
+Maintains backward compatibility for key extraction.
 """
 
-import yaml
-import os
+from typing import Any, Dict, Optional
 from pathlib import Path
-from typing import Dict, Any, Optional
+from unified_trading_platform.trading_core.config.config import settings
 
 
 class APIConfig:
-    """API Configuration manager"""
+    """API Configuration manager wrapper"""
 
-    _config: Optional[Dict[str, Any]] = None
-    _config_path: Optional[Path] = None
-
-    @classmethod
-    def _load_config(cls, config_path: Optional[str] = None) -> Dict[str, Any]:
-        """Load configuration from YAML file"""
-        if cls._config is not None:
-            return cls._config
-
-        if config_path is None:
-            # Default to api_config.yaml in the same directory
-            current_dir = Path(__file__).parent
-            config_path = current_dir / "api_config.yaml"
-        else:
-            config_path = Path(config_path)
-
-        cls._config_path = config_path
-
-        if not config_path.exists():
-            raise FileNotFoundError(
-                f"Configuration file not found: {config_path}. "
-                "Please create api_config.yaml in the api directory."
-            )
-
-        with open(config_path, "r") as f:
-            cls._config = yaml.safe_load(f)
-
-        return cls._config
+    # Map legacy short keys to new unified config paths
+    KEY_MAPPING = {
+        # Broker defaults
+        "broker.default_host": "brokers.interactive_brokers.host",
+        "broker.default_port": "brokers.interactive_brokers.port",
+        "broker.default_client_id": "brokers.interactive_brokers.client_id",
+        # Contract defaults
+        "contract.default_security_type": "defaults.contract.security_type",
+        "contract.default_currency": "defaults.contract.currency",
+        "contract.default_exchange": "defaults.contract.exchange",
+        "contract.default_time_in_force": "defaults.contract.time_in_force",
+        # Data defaults
+        "data.default_duration": "defaults.data.duration",
+        "data.default_bar_size": "defaults.data.bar_size",
+        "data.default_market_data_type": "defaults.data.market_data_type",
+        "data.default_snapshot": "defaults.data.snapshot",
+        # Strategy defaults
+        "strategy.default_status": "defaults.strategy.status",
+        "strategy.default_db_path": "defaults.strategy.db_path",
+        # Portfolio defaults
+        "portfolio.default_total_pnl": "defaults.portfolio.total_pnl",
+        "portfolio.default_open_positions": "defaults.portfolio.open_positions",
+        "portfolio.default_closed_positions": "defaults.portfolio.closed_positions",
+        "portfolio.default_total_positions": "defaults.portfolio.total_positions",
+        "portfolio.default_pending_reentries": "defaults.portfolio.pending_reentries",
+    }
 
     @classmethod
-    def get_config(
-        cls, config_path: Optional[str] = None, reload: bool = False
-    ) -> Dict[str, Any]:
-        """
-        Get configuration dictionary.
-
-        Args:
-            config_path: Optional path to config file
-            reload: Force reload of config
-
-        Returns:
-            Configuration dictionary
-        """
-        if reload:
-            cls._config = None
-
-        return cls._load_config(config_path)
+    def get_config(cls, config_path: Optional[str] = None, reload: bool = False) -> Dict[str, Any]:
+        """Get full configuration dictionary"""
+        return settings.config
 
     @classmethod
     def get(cls, key_path: str, default: Any = None) -> Any:
         """
-        Get a configuration value by key path (e.g., 'api.title' or 'broker.default_host').
-
-        Args:
-            key_path: Dot-separated key path
-            default: Default value if key not found
-
-        Returns:
-            Configuration value or default
+        Get a configuration value.
+        Transparently maps legacy key paths to new unified structure.
         """
-        config = cls.get_config()
-        keys = key_path.split(".")
+        # specialized mapping for mapped keys
+        if key_path in cls.KEY_MAPPING:
+            remapped_key = cls.KEY_MAPPING[key_path]
+            return settings.get(remapped_key, default)
 
-        value = config
-        for key in keys:
-            if isinstance(value, dict) and key in value:
-                value = value[key]
-            else:
-                return default
-
-        return value
+        # Fallback for keys that match (e.g. from api section)
+        return settings.get(key_path, default)
 
     @classmethod
     def reload(cls):
-        """Force reload of configuration"""
-        cls._config = None
-        cls._load_config()
+        """Force reload"""
+        settings._load_config()
 
 
 # Convenience functions
 def get_config_path() -> Path:
     """Get the path to the config file"""
-    current_dir = Path(__file__).parent
-    return current_dir / "api_config.yaml"
+    return Path("config.yaml").absolute()
 
 
 def load_config(config_path: Optional[str] = None) -> Dict[str, Any]:
-    """Load configuration from YAML file"""
-    return APIConfig.get_config(config_path)
+    """Load configuration"""
+    return settings.config
 
 
 def get_config_value(key_path: str, default: Any = None) -> Any:

@@ -5,4 +5,4 @@ This package contains the PaperBroker implementation for backtesting and paper t
 
 from .paper_broker import PaperBroker
 
-__all__ = ['PaperBroker']
+__all__ = ["PaperBroker"]

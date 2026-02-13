@@ -2,10 +2,12 @@
 try:
     from sqlalchemy.orm import declarative_base
     from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Float, Text
+
     Base = declarative_base()
 except Exception:  # SQLAlchemy not mandatory yet
     Base = object  # type: ignore
     Column = Integer = String = DateTime = ForeignKey = Float = Text = None  # type: ignore
+
 
 # Example placeholder models (non-functional without SQLAlchemy installed)
 class User(Base):  # type: ignore
@@ -13,6 +15,7 @@ class User(Base):  # type: ignore
     # id = Column(Integer, primary_key=True)
     # email = Column(String, unique=True)
     ...
+
 
 # Strategy Manager Database Models
 class RunConfig(Base):  # type: ignore
@@ -30,6 +33,7 @@ class RunConfig(Base):  # type: ignore
     # created_at = Column(Text)
     # updated_at = Column(Text)
 
+
 class Portfolio(Base):  # type: ignore
     __tablename__ = "portfolio"
     # portfolio_id = Column(String, primary_key=True)
@@ -38,6 +42,7 @@ class Portfolio(Base):  # type: ignore
     # positions = Column(Text)
     # cash_balance = Column(Float)
     # total_value = Column(Float)
+
 
 class StrategyProfitLoss(Base):  # type: ignore
     __tablename__ = "strategy_profit_loss"
@@ -50,7 +55,3 @@ class StrategyProfitLoss(Base):  # type: ignore
     # num_trades = Column(Integer)
     # win_count = Column(Integer)
     # loss_count = Column(Integer)
-
-
-
-

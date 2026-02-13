@@ -1,7 +1,9 @@
 from enum import Enum
 
+
 class SecurityType(Enum):
     """Security types for different instruments"""
+
     STOCK = "STK"
     OPTION = "OPT"
     FUTURE = "FUT"

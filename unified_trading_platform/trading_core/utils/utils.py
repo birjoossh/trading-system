@@ -5,14 +5,18 @@ from typing import Tuple
 import uuid
 import pandas as pd
 
-FILL_MODEL = "close_same"   # kept for future use
-TZ_OFFSET_MIN = 0           # set to 330 if your H5 is UTC and you want IST
+FILL_MODEL = "close_same"  # kept for future use
+TZ_OFFSET_MIN = 0  # set to 330 if your H5 is UTC and you want IST
+
 
 def parse_time(t: str) -> dt.time:
-    h, m = t.split(":"); return dt.time(int(h), int(m))
+    h, m = t.split(":")
+    return dt.time(int(h), int(m))
+
 
 def ensure_dir(p: Path) -> None:
     p.parent.mkdir(parents=True, exist_ok=True)
+
 
 def nearest_ts(df: pd.DataFrame | pd.Series, ts: pd.Timestamp) -> pd.Timestamp:
     if not isinstance(df.index, pd.DatetimeIndex):
@@ -26,10 +30,10 @@ def nearest_ts(df: pd.DataFrame | pd.Series, ts: pd.Timestamp) -> pd.Timestamp:
 def generate_unique_id(prefix: str = "") -> Tuple[int, str]:
     """
     Generate a unique request ID and subscription ID pair.
-    
+
     Args:
         prefix: Optional prefix for the subscription ID
-        
+
     Returns:
         tuple: (req_id: int, subscription_id: str)
             - req_id: A positive 31-bit integer for use with IB API
@@ -38,6 +42,7 @@ def generate_unique_id(prefix: str = "") -> Tuple[int, str]:
     req_id = int(uuid.uuid4().int & (1 << 31) - 1)  # Generate a positive 31-bit integer
     sub_id = f"{prefix}{uuid.uuid4().hex}" if prefix else str(uuid.uuid4())
     return req_id, sub_id
+
 
 """
 Convert date string from one format to another.
@@ -54,5 +59,7 @@ Convert date string from one format to another.
         "%B %d, %Y",   # January 02, 2024
     ]
 """
+
+
 def format_date(date_str: str, source_format: str = "%Y%m%d", dest_format: str = "%Y-%m-%d") -> str:
     return dt.datetime.strptime(date_str, source_format).strftime(dest_format)

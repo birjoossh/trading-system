@@ -4,8 +4,6 @@ from typing import Dict, List, Optional
 import json
 from pathlib import Path
 
-from requests import get
-
 
 # ---------------------------
 # Strike selection spec
@@ -51,21 +49,15 @@ class TrailRule:
 class RiskConfig:
     """Container for all leg-level exits."""
 
-    target: RiskRule = dc.field(
-        default_factory=lambda: RiskRule(enabled=True, basis="premium_pct", value=25.0)
-    )
-    sl: RiskRule = dc.field(
-        default_factory=lambda: RiskRule(enabled=True, basis="premium_pct", value=20.0)
-    )
+    target: RiskRule = dc.field(default_factory=lambda: RiskRule(enabled=True, basis="premium_pct", value=25.0))
+    sl: RiskRule = dc.field(default_factory=lambda: RiskRule(enabled=True, basis="premium_pct", value=20.0))
     trail: TrailRule = dc.field(default_factory=TrailRule)
 
 
 @dc.dataclass
 class ReEntryRule:
     enabled: bool = False
-    mode: str = (
-        "RE_ASAP"  # RE_ASAP | RE_ASAP_REV | RE_COST | RE_COST_REV | RE_MOMENTUM | RE_MOMENTUM_REV | LAZY_LEG
-    )
+    mode: str = "RE_ASAP"  # RE_ASAP | RE_ASAP_REV | RE_COST | RE_COST_REV | RE_MOMENTUM | RE_MOMENTUM_REV | LAZY_LEG
     max_count: int = 0  # capped at 20 in engine
     lazy_leg: Optional[Dict] = None  # only for LAZY_LEG: mini leg-spec dict
 
@@ -89,7 +81,7 @@ class LegSpec:
     reentry_on_target: ReEntryRule = dc.field(default_factory=ReEntryRule)
     rbo_toggle: bool = False
     rbo_start_time: str = None
-    rbo_end_time: str =  None
+    rbo_end_time: str = None
     rbo_symbol: str = "Underlying"
     rbo_entry_when: str = None
     rbo_comp_operator: str = 0
@@ -118,14 +110,10 @@ class StrategyConfig:
     symbol: str = "NIFTY 50"
     currency: str = "INR"
     legs: List[LegSpec] = dc.field(default_factory=list)
-    costs: Dict = dc.field(
-        default_factory=lambda: {"per_lot_roundtrip": 0.0, "slippage_per_fill": 0.0}
-    )
+    costs: Dict = dc.field(default_factory=lambda: {"per_lot_roundtrip": 0.0, "slippage_per_fill": 0.0})
 
 
-def load_strategy_config(
-    strategy_name: str, strategies_dir: str = None
-) -> StrategyConfig:
+def load_strategy_config(strategy_name: str, strategies_dir: str = None) -> StrategyConfig:
     """Load strategy configuration from JSON file"""
     if strategies_dir is None:
         # Default to the strategies directory relative to this file
@@ -145,9 +133,7 @@ def load_strategy_config(
     for leg_dict in config_dict.get("legs", []):
         # Convert strike_criteria
         sc_dict = leg_dict.get("strike_criteria", {})
-        strike_criteria = StrikeCriteria(
-            mode=sc_dict.get("mode", "STRIKE_TYPE"), params=sc_dict.get("params", {})
-        )
+        strike_criteria = StrikeCriteria(mode=sc_dict.get("mode", "STRIKE_TYPE"), params=sc_dict.get("params", {}))
 
         # Convert risk config
         risk_dict = leg_dict.get("risk", {})
@@ -203,14 +189,14 @@ def load_strategy_config(
             risk=risk_config,
             reentry_on_sl=reentry_sl,
             reentry_on_target=reentry_target,
-            rbo_toggle = leg_dict.get('rbo_toggle',False),
-            rbo_start_time= leg_dict.get('rbo_start_time', None),
-            rbo_end_time= leg_dict.get('rbo_end_time', None),
-            rbo_symbol = leg_dict.get('rbo_symbol','Underlying'),
-            rbo_entry_when = leg_dict.get('rbo_entry_when',None),
-            rbo_comp_operator= leg_dict.get('rbo_comp_operator',0),
-            rbo_allowed_range= leg_dict.get('rbo_allowed_range',0),
-            rbo_range_validator_mode = leg_dict.get('rbo_range_validator_mode', None)
+            rbo_toggle=leg_dict.get("rbo_toggle", False),
+            rbo_start_time=leg_dict.get("rbo_start_time", None),
+            rbo_end_time=leg_dict.get("rbo_end_time", None),
+            rbo_symbol=leg_dict.get("rbo_symbol", "Underlying"),
+            rbo_entry_when=leg_dict.get("rbo_entry_when", None),
+            rbo_comp_operator=leg_dict.get("rbo_comp_operator", 0),
+            rbo_allowed_range=leg_dict.get("rbo_allowed_range", 0),
+            rbo_range_validator_mode=leg_dict.get("rbo_range_validator_mode", None),
         )
         legs.append(leg_spec)
 
@@ -233,7 +219,5 @@ def load_strategy_config(
         trail_to_be=trail_to_be,
         lot_size=config_dict.get("lot_size", 50),
         legs=legs,
-        costs=config_dict.get(
-            "costs", {"per_lot_roundtrip": 0.0, "slippage_per_fill": 0.0}
-        ),
+        costs=config_dict.get("costs", {"per_lot_roundtrip": 0.0, "slippage_per_fill": 0.0}),
     )

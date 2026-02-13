@@ -4,18 +4,13 @@ Handles historical data, real-time data subscriptions, and option chains.
 """
 
 from fastapi import APIRouter, HTTPException
-from typing import List
-from datetime import datetime
-import pandas as pd
 from unified_trading_platform.runtime import get_trading_system
-from unified_trading_platform.trading_core.brokers.base_broker import OptionChain
 from ..models import (
     HistoricalDataRequest,
     HistoricalDataResponse,
     OptionChainRequest,
     MarketDataSubscriptionRequest,
     MarketDataSubscriptionResponse,
-    ErrorResponse,
     OptionChainResponse,
 )
 
@@ -48,11 +43,7 @@ def get_option_chain(req: OptionChainRequest):
     try:
         from unified_trading_platform.trading_core.brokers.base_broker import Contract
 
-        contract = Contract(
-            symbol=req.symbol,
-            exchange=req.exchange,
-            expiry=req.expiry
-        )
+        contract = Contract(symbol=req.symbol, exchange=req.exchange, expiry=req.expiry)
         option_chain = ts.get_option_chain(req.broker_name, contract)
         return OptionChainResponse.from_domain(option_chain)
     except Exception as e:

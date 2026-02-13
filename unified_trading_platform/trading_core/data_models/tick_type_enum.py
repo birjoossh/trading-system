@@ -1,7 +1,9 @@
 from enum import Enum
 
+
 class TickType(Enum):
     """Common tick types for market data"""
+
     BID = "BID"
     ASK = "ASK"
     LAST = "LAST"

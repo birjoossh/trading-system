@@ -2,7 +2,11 @@ from __future__ import annotations
 import pandas as pd
 from unified_trading_platform.trading_core.strategy_engine.config import StrikeCriteria
 from unified_trading_platform.trading_core.strategy_engine.greeks_helper import ensure_delta
+from unified_trading_platform.trading_core.utils import get_logger
 from datetime import datetime
+
+logger = get_logger(__name__)
+
 
 # --- helpers ---
 def _detect_step(strikes: pd.Series, default: float = 50.0) -> float:
@@ -16,6 +20,7 @@ def _detect_step(strikes: pd.Series, default: float = 50.0) -> float:
         except Exception:
             pass
     return default
+
 
 # Expiry inference (needed for delta computation)
 def _infer_expiry_dt(chain: pd.DataFrame, params: dict) -> datetime:
@@ -42,8 +47,8 @@ def _infer_expiry_dt(chain: pd.DataFrame, params: dict) -> datetime:
             return dt.to_pydatetime() if hasattr(dt, "to_pydatetime") else dt
     raise ValueError("expiry_dt not provided and no expiry column found in chain")
 
-def select_strike(chain: pd.DataFrame, option_type: str, atm_price: float,
-                  criteria: StrikeCriteria) -> float:
+
+def select_strike(chain: pd.DataFrame, option_type: str, atm_price: float, criteria: StrikeCriteria) -> float:
     """
     Select a strike from the provided option chain.
 
@@ -68,6 +73,7 @@ def select_strike(chain: pd.DataFrame, option_type: str, atm_price: float,
     params = criteria.params or {}
 
     df = chain[chain["option_type"].str.upper() == option_type.upper()].copy()
+    logger.debug("Option chain data: %s, option_type: %s", df.to_string(), option_type)
     if df.empty:
         raise ValueError(f"No {option_type} rows")
 
@@ -213,7 +219,7 @@ def select_strike(chain: pd.DataFrame, option_type: str, atm_price: float,
         t = target / 100.0 if abs(target) > 1 else abs(target)
         diff = (d - t).abs()
         return float(df.iloc[diff.argsort()].iloc[0]["strike"])
-    
+
     # --- DELTA_RANGE ---
     if mode == "DELTA_RANGE":
         # Ensure Delta is available by computing IV/Delta if missing

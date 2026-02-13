@@ -5,47 +5,56 @@ import threading
 import time
 from datetime import datetime, date
 from typing import List, Optional, Dict, Any, Set
-from ibapi.client import EClient
 from unified_trading_platform.trading_core.utils.utils import generate_unique_id
-from unified_trading_platform.trading_core.data_models.option_chain import OptionChain, StrikeGroup, ExpirationGroup, UnderlyingInfo
+from unified_trading_platform.trading_core.data_models.option_chain import (
+    OptionChain,
+    StrikeGroup,
+    ExpirationGroup,
+    UnderlyingInfo,
+)
 from unified_trading_platform.trading_core.data_models.option_contract import OptionContract
 from unified_trading_platform.trading_core.data_models import OptionRight
 from unified_trading_platform.trading_core.data_models.contract import Contract, SecurityType
 from unified_trading_platform.trading_core.brokers.interactive_brokers.ib_client import IBClient
-from unified_trading_platform.trading_core.brokers.interactive_brokers.common import CommonMixin
 from unified_trading_platform.trading_core.brokers.interactive_brokers.ib_market_data import IBMarketDataMixin
 from unified_trading_platform.trading_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
+
 
 class IBOptionsMixin:
     def __init__(self, client: IBClient, market_data: IBMarketDataMixin) -> None:
         self.client = client
         self.market_data = market_data
 
-    def get_option_chain(self, underlying_contract: Contract, 
-                         expiration_dates: Optional[List[str]] = None,
-                         strikes: Optional[List[float]] = None) -> OptionChain:
+    def get_option_chain(
+        self,
+        underlying_contract: Contract,
+        expiration_dates: Optional[List[str]] = None,
+        strikes: Optional[List[float]] = None,
+    ) -> OptionChain:
         logger.info(f"Requesting option chain for {underlying_contract.symbol}")
         req_id, _ = generate_unique_id(prefix="sub_")
 
         response_received = threading.Event()
         response_received.clear()
         self.client.pending_option_chains[req_id] = {
-            'event': response_received,
-            'underlying_contract': underlying_contract,
-            'params': [],
-            'error': None,
+            "event": response_received,
+            "underlying_contract": underlying_contract,
+            "params": [],
+            "error": None,
         }
         try:
-            logger.info( f"Requesting option parameters for {underlying_contract.symbol} on exchange \
-                {underlying_contract.exchange}")
-            
+            logger.info(
+                f"Requesting option parameters for {underlying_contract.symbol} on exchange \
+                {underlying_contract.exchange}"
+            )
+
             # Request option chain parameters
             self.client.reqSecDefOptParams(
                 req_id,
                 underlying_contract.symbol,
-                "", #fixme: somehow exchange value is not working, so we get all options and filter later underlying_contract.exchange or "",
+                "",  # fixme: somehow exchange value is not working, so we get all options and filter later underlying_contract.exchange or "",
                 underlying_contract.security_type.value,
                 getattr(underlying_contract, "conId", 0),
             )
@@ -86,15 +95,15 @@ class IBOptionsMixin:
     def _request_option_ltp(self, option_chain: OptionChain):
         # Create a list to track active subscriptions
         active_subscriptions = []
-        
+
         # Create an event to track completion
         completion_event = threading.Event()
         pending_requests = 0
-        
+
         def on_market_data_update(sub_id, tick_data):
             """Callback for market data updates"""
             nonlocal pending_requests
-            
+
             # Find the option for this subscription
             for i, (sub_id_stored, option, req_time) in enumerate(active_subscriptions):
                 if sub_id_stored == sub_id:
@@ -102,22 +111,22 @@ class IBOptionsMixin:
                     if tick_data.last is not None:
                         option.ltp = tick_data.last
                         option.last_updated = datetime.utcnow()
-                    
+
                     # Unsubscribe and clean up
                     try:
                         self.market_data.unsubscribe_market_data(sub_id)
                     except Exception as e:
                         logger.warning(f"Error unsubscribing from market data: {e}")
-                    
+
                     # Remove from active subscriptions
                     active_subscriptions.pop(i)
                     pending_requests -= 1
-                    
+
                     # If all requests are done, signal completion
                     if pending_requests <= 0:
                         completion_event.set()
                     break
-        
+
         # Request LTP for each option
         for exp_group in option_chain.expiration_dates:
             expiry_date = exp_group.expiry_date
@@ -135,34 +144,32 @@ class IBOptionsMixin:
                                 expiry=expiry_date,
                                 strike=strike_price,
                                 option_right=option.option_right,
-                                multiplier=option_chain.contract.multiplier
+                                multiplier=option_chain.contract.multiplier,
                             )
-                            
+
                             # Subscribe with snapshot=True
                             sub_id = self.market_data.subscribe_market_data(
-                                contract=contract,
-                                callback=on_market_data_update,
-                                snapshot=True
+                                contract=contract, callback=on_market_data_update, snapshot=True
                             )
-                            
+
                             # Track this subscription
                             active_subscriptions.append((sub_id, option, time.time()))
                             pending_requests += 1
                         except Exception as e:
                             logger.warning(f"Failed to request LTP for {option.option_ticker}: {e}")
-        
+
         # Wait for all requests to complete or timeout
         if pending_requests > 0:
             if not completion_event.wait(timeout=15):  # 15 second timeout
                 logger.warning("Timeout waiting for LTP updates")
-                
+
                 # Clean up any remaining subscriptions
                 for sub_id, _, _ in active_subscriptions:
                     try:
                         self.unsubscribe_market_data(sub_id)
                     except:
                         pass
-            
+
             # Clear any remaining subscriptions
             active_subscriptions.clear()
 
@@ -178,9 +185,7 @@ class IBOptionsMixin:
         combined_strikes: Set[float] = set()
         for entry in params:
             combined_expirations.update(entry.get("expirations", []))
-            combined_strikes.update(
-                float(strike) for strike in entry.get("strikes", []) if strike is not None
-            )
+            combined_strikes.update(float(strike) for strike in entry.get("strikes", []) if strike is not None)
 
         if not combined_expirations:
             raise ValueError("IB did not return any expirations for option chain")
@@ -243,9 +248,7 @@ class IBOptionsMixin:
                 continue
         return 1
 
-    def _filter_expirations(
-        self, expirations: Set[str], requested: Optional[List[str]], limit: int = 4
-    ) -> List[str]:
+    def _filter_expirations(self, expirations: Set[str], requested: Optional[List[str]], limit: int = 4) -> List[str]:
         normalized = sorted(expirations)
         if requested:
             requested_set = {exp.replace("-", "") for exp in requested}
@@ -254,9 +257,7 @@ class IBOptionsMixin:
                 return filtered[:limit]
         return normalized[:limit]
 
-    def _filter_strikes(
-        self, strikes: Set[float], requested: Optional[List[float]], limit: int = 20
-    ) -> List[float]:
+    def _filter_strikes(self, strikes: Set[float], requested: Optional[List[float]], limit: int = 20) -> List[float]:
         sorted_strikes = sorted(strikes)
         if requested:
             requested_set = {float(value) for value in requested}
@@ -322,9 +323,7 @@ class IBOptionsMixin:
             last_updated=datetime.utcnow(),
         )
 
-    def _format_option_symbol(
-        self, symbol: str, expiry_str: str, strike: float, right: OptionRight
-    ) -> str:
+    def _format_option_symbol(self, symbol: str, expiry_str: str, strike: float, right: OptionRight) -> str:
         try:
             expiry_fmt = datetime.strptime(expiry_str, "%Y%m%d").strftime("%y%m%d")
         except ValueError:
