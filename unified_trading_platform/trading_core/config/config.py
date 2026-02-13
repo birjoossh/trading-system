@@ -157,6 +157,18 @@ class Config:
         """Get broker configuration"""
         return self.get(f"brokers.{broker_name}", {})
 
+    def get_exchange_config(self, exchange_name: str) -> Dict[str, Any]:
+        """Get exchange configuration"""
+        return self.get(f"exchanges.{exchange_name}", {})
+
+    def get_exchange_expiry_config(self, exchange_name: str) -> Dict[str, Any]:
+        """Get exchange expiry configuration"""
+        return self.get(f"exchanges.{exchange_name}.expiry", {})
+
+    def get_default_exchange(self) -> str:
+        """Get default exchange from system config"""
+        return self.get("system.default_exchange", "NSE")
+
 
 # Global instance for easy access
 settings = Config()

@@ -7,6 +7,27 @@ system:
   max_concurrent_orders: 100
   order_timeout: 30
   data_cache_ttl: 300
+  default_exchange: "NSE"
+
+exchanges:
+  NSE:
+    currency: "INR"
+    timezone: "Asia/Kolkata"
+    trading_hours:
+      start: "09:15"
+      end: "15:30"
+    expiry:
+      switch_date: "2025-09-01"
+      weekly_day_before: 3 # Thursday
+      weekly_day_after: 1  # Tuesday
+  NYSE:
+    currency: "USD"
+    timezone: "America/New_York"
+    trading_hours:
+      start: "09:30"
+      end: "16:00"
+    expiry:
+      weekly_day: 4 # Friday (0=Mon, 4=Fri)
 
 logging:
   level: "INFO"
