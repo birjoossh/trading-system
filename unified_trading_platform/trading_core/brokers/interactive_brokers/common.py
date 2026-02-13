@@ -77,7 +77,7 @@ class CommonMixin:
             # Delayed size ticks
             69: ("bid_size", TickType.BID_SIZE),
             70: ("ask_size", TickType.ASK_SIZE),
-            71: ("ask_size", TickType.LAST_SIZE),
+            71: ("last_size", TickType.LAST_SIZE),
             74: ("volume", TickType.VOLUME),
         }
 

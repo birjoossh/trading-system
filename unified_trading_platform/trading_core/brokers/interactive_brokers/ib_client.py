@@ -15,6 +15,8 @@ from unified_trading_platform.trading_core.data_models import TickData
 from unified_trading_platform.trading_core.data_models import OrderAction, OrderStatus, Trade
 
 from unified_trading_platform.trading_core.brokers.interactive_brokers.common import CommonMixin
+from concurrent.futures import Future
+from typing import Optional
 
 logger = get_logger(__name__)
 
@@ -25,10 +27,40 @@ class IBClient(EWrapper, EClient):
     def __init__(self, broker):
         EClient.__init__(self, self)
         self.broker = broker
-        self.pending_option_chains = {}
-        self.pending_contract_details = {}
+        from .ib_request_manager import IBRequestManager
+        self.request_manager = IBRequestManager()
+        self._accumulators = {}
 
-    def nextValidId(self, orderId: OrderId):
+    def get_contract_details_async(self, ib_contract) -> "Future":
+        """Request contract details asynchronously"""
+        req_id, future = self.request_manager.create_request()
+        try:
+            self.reqContractDetails(req_id, ib_contract)
+        except Exception as e:
+            self.request_manager.set_error(req_id, e)
+        return future
+
+    
+    def get_option_chain_params_async(self, exchange: str, underlying_con_id: int, trading_class: str) -> "Future":
+        """Request option chain params asynchronously"""
+        req_id, future = self.request_manager.create_request()
+        try:
+            self.reqSecDefOptParams(req_id, underlying_con_id, "", exchange, trading_class)
+        except Exception as e:
+            self.request_manager.set_error(req_id, e)
+        return future
+
+    def get_historical_data_async(self, ib_contract, duration: str, bar_size: str, what_to_show: str) -> "Future":
+        """Request historical data asynchronously"""
+        req_id, future = self.request_manager.create_request()
+        # Initialize accumulator
+        self._accumulators[req_id] = []
+        try:
+             self.reqHistoricalData(req_id, ib_contract, "", duration, bar_size, what_to_show, 1, 1, False, [])
+        except Exception as e:
+            self.request_manager.set_error(req_id, e)
+            del self._accumulators[req_id]
+        return future
         """Receive next valid order ID"""
         self.broker.next_order_id = orderId
         try:
@@ -38,12 +70,15 @@ class IBClient(EWrapper, EClient):
 
     def historicalData(self, reqId: int, bar: BarData):
         """Receive historical data"""
-        if reqId in self.broker.historical_data:
-            self.broker.historical_data[reqId].append(bar)
+        # New pattern: accumulate for RequestManager
+        if reqId in self._accumulators:
+            self._accumulators[reqId].append(bar)
 
     def historicalDataEnd(self, reqId: int, start: str, end: str):
         """Historical data complete"""
-        pass
+        if reqId in self._accumulators:
+            result = self._accumulators.pop(reqId, [])
+            self.request_manager.set_result(reqId, result)
 
     def tickPrice(self, reqId: int, tickType: int, value: float, attrib):
         """Receive tick price data with enhanced options support"""
@@ -105,6 +140,68 @@ class IBClient(EWrapper, EClient):
                     sub["tick_data"].timestamp = datetime.utcnow()
             if "callback" in sub:
                 sub["callback"](sub["tick_data"])
+
+    def tickOptionComputation(
+        self,
+        reqId: int,
+        tickType: int,
+        tickAttrib: int,
+        impliedVol: float,
+        delta: float,
+        optPrice: float,
+        pvDividend: float,
+        gamma: float,
+        vega: float,
+        theta: float,
+        undPrice: float,
+    ):
+        """Receive option computation data (Greeks)"""
+        if reqId in self.broker.market_data_subscriptions:
+            sub = self.broker.market_data_subscriptions[reqId]
+            contract: Contract = sub["contract"]
+            
+            if "tick_data" not in sub:
+                sub["tick_data"] = TickData(
+                    timestamp=datetime.utcnow(),
+                    exchange=contract.exchange,
+                    security_type=contract.security_type,
+                    currency=contract.currency,
+                    symbol=contract.symbol,
+                    bid=0.0,
+                    ask=0.0,
+                    last=0.0,
+                    volume=0,
+                    open_interest=0,
+                )
+            
+            tick_data = sub["tick_data"]
+            
+            # IB uses specific values to indicate "not computed" or error (e.g. -1, -2)
+            # We filter those out. Valid values are usually non-negative for price/vol, but delta can be negative.
+            # A common check is checking against 1.7976931348623157E308 (Double.MAX_VALUE) but logic varies.
+            # Here we assume simpler checks or valid values if not None/Infinite.
+            # Actually IBAPI passes floats.
+            
+            def is_valid(val):
+                return val is not None and val != 1.7976931348623157E308 and val > -1e10 # Arbitrary simple validation
+                
+            if is_valid(impliedVol):
+                tick_data.implied_volatility = impliedVol
+            if is_valid(delta):
+                tick_data.delta = delta
+            if is_valid(optPrice):
+                tick_data.option_price = optPrice
+            if is_valid(gamma):
+                tick_data.gamma = gamma
+            if is_valid(vega):
+                tick_data.vega = vega
+            if is_valid(theta):
+                tick_data.theta = theta
+            
+            tick_data.timestamp = datetime.utcnow()
+            
+            if "callback" in sub:
+                sub["callback"](tick_data)
 
     def orderStatus(
         self,
@@ -213,14 +310,7 @@ class IBClient(EWrapper, EClient):
         strikes: set,
     ):
         """Receive option chain parameter data and buffer for the broker to process."""
-        if reqId not in self.pending_option_chains:
-            return
-
         try:
-            entry = self.pending_option_chains[reqId]
-            underlying_contract: Contract = entry["underlying_contract"]
-            if underlying_contract.exchange != "" and underlying_contract.exchange != exchange:
-                return
             logger.info(
                 "Received option params (exchange=%s, tradingClass=%s, expirations=%d, strikes=%d)",
                 exchange,
@@ -229,8 +319,10 @@ class IBClient(EWrapper, EClient):
                 len(strikes),
             )
 
-            params = entry.setdefault("params", [])
-            params.append(
+            if reqId not in self._accumulators:
+                self._accumulators[reqId] = []
+
+            self._accumulators[reqId].append(
                 {
                     "exchange": exchange,
                     "underlyingConId": underlyingConId,
@@ -241,69 +333,69 @@ class IBClient(EWrapper, EClient):
                 }
             )
         except Exception as exc:
-            self.pending_option_chains[reqId]["error"] = str(exc)
+            self.request_manager.set_error(reqId, str(exc))
+
 
     def securityDefinitionOptionParameterEnd(self, reqId: int):
         """Option chain data complete"""
-        if reqId in self.pending_option_chains:
-            logger.info("Received option chain data complete (reqId=%d)", reqId)
-            self.pending_option_chains[reqId]["event"].set()
+        logger.info("Received option chain data complete (reqId=%d)", reqId)
+        result = self._accumulators.pop(reqId, [])
+        self.request_manager.set_result(reqId, result)
 
     def contractDetails(self, reqId: int, contractDetails):
         """Handle contract details response"""
-        if reqId in self.pending_contract_details:
-            try:
-                details = {
-                    "symbol": contractDetails.contract.symbol,
-                    "security_type": contractDetails.contract.secType,
-                    "exchange": contractDetails.contract.exchange,
-                    "currency": contractDetails.contract.currency,
-                    "description": getattr(contractDetails, "longName", ""),
-                    "min_tick": getattr(contractDetails, "minTick", None),
-                    "order_types": getattr(contractDetails, "orderTypes", ""),
-                    "valid_exchanges": getattr(contractDetails, "validExchanges", ""),
-                    "price_magnifier": getattr(contractDetails, "priceMagnifier", 1),
-                    "under_conid": getattr(contractDetails, "underConId", None),
-                    "long_name": getattr(contractDetails, "longName", ""),
-                    "contract_month": getattr(contractDetails, "contractMonth", ""),
-                    "industry": getattr(contractDetails, "industry", ""),
-                    "category": getattr(contractDetails, "category", ""),
-                    "subcategory": getattr(contractDetails, "subcategory", ""),
-                    "time_zone_id": getattr(contractDetails, "timeZoneId", ""),
-                    "trading_hours": getattr(contractDetails, "tradingHours", ""),
-                    "liquid_hours": getattr(contractDetails, "liquidHours", ""),
-                    "ev_rule": getattr(contractDetails, "evRule", ""),
-                    "ev_multiplier": getattr(contractDetails, "evMultiplier", None),
-                    "md_size_multiplier": getattr(contractDetails, "mdSizeMultiplier", 1),
-                    "agg_group": getattr(contractDetails, "aggGroup", None),
-                    "market_rule_ids": getattr(contractDetails, "marketRuleIds", ""),
-                    "last_trade_date": getattr(contractDetails.contract, "lastTradeDateOrContractMonth", ""),
-                    "sector": getattr(contractDetails, "sector", ""),
-                    "sector_group": getattr(contractDetails, "sectorGroup", ""),
-                    "strike": getattr(contractDetails.contract, "strike", None),
-                    "right": getattr(contractDetails.contract, "right", ""),
-                    "multiplier": getattr(contractDetails.contract, "multiplier", ""),
-                    "primary_exchange": getattr(contractDetails.contract, "primaryExchange", ""),
-                    "contract_details": contractDetails,  # Raw contract details object
-                }
-                self.pending_contract_details[reqId]["details"] = details
-                self.pending_contract_details[reqId]["event"].set()
-            except Exception as e:
-                self.pending_contract_details[reqId]["error"] = str(e)
-                self.pending_contract_details[reqId]["event"].set()
+        try:
+            details = {
+                "symbol": contractDetails.contract.symbol,
+                "security_type": contractDetails.contract.secType,
+                "exchange": contractDetails.contract.exchange,
+                "currency": contractDetails.contract.currency,
+                "description": getattr(contractDetails, "longName", ""),
+                "min_tick": getattr(contractDetails, "minTick", None),
+                "order_types": getattr(contractDetails, "orderTypes", ""),
+                "valid_exchanges": getattr(contractDetails, "validExchanges", ""),
+                "price_magnifier": getattr(contractDetails, "priceMagnifier", 1),
+                "under_conid": getattr(contractDetails, "underConId", None),
+                "long_name": getattr(contractDetails, "longName", ""),
+                "contract_month": getattr(contractDetails, "contractMonth", ""),
+                "industry": getattr(contractDetails, "industry", ""),
+                "category": getattr(contractDetails, "category", ""),
+                "subcategory": getattr(contractDetails, "subcategory", ""),
+                "time_zone_id": getattr(contractDetails, "timeZoneId", ""),
+                "trading_hours": getattr(contractDetails, "tradingHours", ""),
+                "liquid_hours": getattr(contractDetails, "liquidHours", ""),
+                "ev_rule": getattr(contractDetails, "evRule", ""),
+                "ev_multiplier": getattr(contractDetails, "evMultiplier", None),
+                "md_size_multiplier": getattr(contractDetails, "mdSizeMultiplier", 1),
+                "agg_group": getattr(contractDetails, "aggGroup", None),
+                "market_rule_ids": getattr(contractDetails, "marketRuleIds", ""),
+                "last_trade_date": getattr(contractDetails.contract, "lastTradeDateOrContractMonth", ""),
+                "sector": getattr(contractDetails, "sector", ""),
+                "sector_group": getattr(contractDetails, "sectorGroup", ""),
+                "strike": getattr(contractDetails.contract, "strike", None),
+                "right": getattr(contractDetails.contract, "right", ""),
+                "multiplier": getattr(contractDetails.contract, "multiplier", ""),
+                "primary_exchange": getattr(contractDetails.contract, "primaryExchange", ""),
+                "contract_details": contractDetails,  # Raw contract details object
+            }
+            if reqId not in self._accumulators:
+                self._accumulators[reqId] = []
+            self._accumulators[reqId].append(details)
+        except Exception as e:
+            self.request_manager.set_error(reqId, str(e))
 
     def contractDetailsEnd(self, reqId: int):
         """Called when all contract details have been received"""
-        if reqId in self.pending_contract_details:
-            self.pending_contract_details[reqId]["event"].set()
+        result = self._accumulators.pop(reqId, [])
+        # Return the last item if expecting single result? Or list?
+        # Standardize: contractDetails returns a LIST of details
+        self.request_manager.set_result(reqId, result)
 
     def error(self, reqId: int, errorCode: int, errorString: str, advancedOrderRejectJson: str = ""):
         """Handle errors with enhanced market data error tracking"""
-        # Handle contract details errors
-        if reqId in self.pending_contract_details:
-            self.pending_contract_details[reqId]["error"] = f"{errorCode}: {errorString}"
-            self.pending_contract_details[reqId]["event"].set()
-            return
+        # Handle request errors via RequestManager
+        if reqId != -1:
+            self.request_manager.set_error(reqId, f"{errorCode}: {errorString}")
 
         # Log non-harmless errors
         if errorCode not in [2104, 2106, 2158]:  # Ignore harmless messages

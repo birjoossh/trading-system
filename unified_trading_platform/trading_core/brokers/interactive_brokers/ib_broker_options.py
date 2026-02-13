@@ -34,44 +34,27 @@ class IBOptionsMixin:
         strikes: Optional[List[float]] = None,
     ) -> OptionChain:
         logger.info(f"Requesting option chain for {underlying_contract.symbol}")
-        req_id, _ = generate_unique_id(prefix="sub_")
-
-        response_received = threading.Event()
-        response_received.clear()
-        self.client.pending_option_chains[req_id] = {
-            "event": response_received,
-            "underlying_contract": underlying_contract,
-            "params": [],
-            "error": None,
-        }
+        
         try:
             logger.info(
                 f"Requesting option parameters for {underlying_contract.symbol} on exchange \
                 {underlying_contract.exchange}"
             )
 
-            # Request option chain parameters
-            self.client.reqSecDefOptParams(
-                req_id,
-                underlying_contract.symbol,
-                "",  # fixme: somehow exchange value is not working, so we get all options and filter later underlying_contract.exchange or "",
-                underlying_contract.security_type.value,
-                getattr(underlying_contract, "conId", 0),
+            # Request option chain parameters via async client
+            # fixme: exchange filtering logic needs to be revisited if "SMART" vs specific exchange behavior is weird
+            future = self.client.get_option_chain_params_async(
+                exchange=underlying_contract.exchange or "",
+                underlying_con_id=getattr(underlying_contract, "conId", 0),
+                trading_class="",
             )
-
+            
             # Wait for response with timeout
-            if not response_received.wait(timeout=30):
-                self.client.pending_option_chains.pop(req_id, None)
+            try:
+                params = future.result(timeout=30)
+            except TimeoutError:
                 raise TimeoutError("Timeout waiting for option chain parameters")
-
-            entry = self.client.pending_option_chains.pop(req_id, None)
-            if not entry:
-                raise RuntimeError("Option chain request entry missing after completion")
-
-            if entry.get("error"):
-                raise RuntimeError(f"IB returned error: {entry['error']}")
-
-            params = entry.get("params") or []
+                
             if not params:
                 raise ValueError("IB did not return any option chain parameters")
 
@@ -89,8 +72,6 @@ class IBOptionsMixin:
         except Exception as e:
             logger.error(f"Error getting option chain: {e}", exc_info=True)
             raise
-        finally:
-            self.client.pending_option_chains.pop(req_id, None)
 
     def _request_option_ltp(self, option_chain: OptionChain):
         # Create a list to track active subscriptions
@@ -128,12 +109,25 @@ class IBOptionsMixin:
                     break
 
         # Request LTP for each option
+        count = 0
+        max_requests = 100 # Limit to 100 concurrent requests to prevent pacing violation
+        
         for exp_group in option_chain.expiration_dates:
+            if count >= max_requests:
+                logger.warning(f"Reached max LTP requests ({max_requests}). Some options will not have LTP.")
+                break
+                
             expiry_date = exp_group.expiry_date
             for strike_group in exp_group.strikes:
+                if count >= max_requests:
+                    break
+                    
                 strike_price = strike_group.strike_price
                 for option in [strike_group.call_option, strike_group.put_option]:
                     if option is not None:
+                        if count >= max_requests:
+                            break
+                            
                         try:
                             # Create a contract for the option
                             contract = Contract(
@@ -155,6 +149,7 @@ class IBOptionsMixin:
                             # Track this subscription
                             active_subscriptions.append((sub_id, option, time.time()))
                             pending_requests += 1
+                            count += 1
                         except Exception as e:
                             logger.warning(f"Failed to request LTP for {option.option_ticker}: {e}")
 

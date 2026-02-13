@@ -47,10 +47,10 @@ class IBBroker(BrokerInterface):
         self.market_data = IBMarketDataMixin(self.client, self.market_data_subscriptions)
         self.options = IBOptionsMixin(self.client, self.market_data)
         self.host = host
+        self.host = host
         self.port = port  # Paper trading port
         self.client_id = client_id
         self.next_order_id = None
-        self.historical_data = {}
         self.orders = {}
         self.positions = []
         self.account_info = {}  # unimplemented
@@ -182,23 +182,27 @@ class IBBroker(BrokerInterface):
         if not self.is_connected:
             raise Exception("Not connected to broker")
 
-        req_id = len(self.historical_data) + 1000
-        self.historical_data[req_id] = []
+    def get_historical_data(
+        self, contract: Contract, duration: str, bar_size: str, what_to_show: str = "TRADES"
+    ) -> List[TickData]:
+        """Get historical bar data"""
+        if not self.is_connected:
+            raise Exception("Not connected to broker")
 
         ib_contract = CommonMixin.create_ib_contract(contract)
         try:
-            # Request historical data
-            self.client.reqHistoricalData(req_id, ib_contract, "", duration, bar_size, what_to_show, 1, 1, False, [])
-
-            # Wait for data
-            timeout = 30
-            start_time = time.time()
-            while len(self.historical_data[req_id]) == 0 and (time.time() - start_time) < timeout:
-                time.sleep(1)  # sleep 1 sec
+            # Request historical data via async client
+            future = self.client.get_historical_data_async(ib_contract, duration, bar_size, what_to_show)
+            
+            # Wait for data (30 seconds timeout)
+            try:
+                ib_bars = future.result(timeout=30)
+            except TimeoutError:
+                raise TimeoutError("Timeout waiting for historical data")
 
             # Convert to our TickData format
             bars = []
-            for bar in self.historical_data[req_id]:
+            for bar in ib_bars:
                 try:
                     bar_data = TickData(
                         timestamp=datetime.strptime(bar.date, "%Y%m%d %H:%M:%S"),
@@ -216,11 +220,11 @@ class IBBroker(BrokerInterface):
                 except (ValueError, AttributeError) as e:
                     logger.error(f"Error parsing bar data: {e}", exc_info=True)
                     continue
-        finally:
-            if req_id in self.historical_data:
-                del self.historical_data[req_id]
+            return bars
 
-        return bars
+        except Exception as e:
+            logger.error(f"Error getting historical data: {e}", exc_info=True)
+            raise
 
     def submit_order(self, contract: Contract, order: Order) -> str:
         """Submit an order"""
@@ -302,31 +306,32 @@ class IBBroker(BrokerInterface):
         if not self.is_connected:
             raise Exception("Not connected to broker")
 
-        req_id = len(self.client.pending_contract_details) + 5000
-        response_received = threading.Event()
-        self.client.pending_contract_details[req_id] = {"event": response_received, "details": None, "error": None}
+    def get_contract_details(self, contract: Contract) -> Dict[str, Any]:
+        if not self.is_connected:
+            raise Exception("Not connected to broker")
+
         try:
             ib_contract = self._create_ib_contract(contract)
-            self.client.reqContractDetails(req_id, ib_contract)
+            future = self.client.get_contract_details_async(ib_contract)
 
             # Wait for response with timeout (10 seconds)
-            if not response_received.wait(timeout=10):
+            # note: request manager creates a future that resolves when contractDetailsEnd is called
+            # this means we wait for ALL details to arrive, not just the first one.
+            try:
+                results = future.result(timeout=10)
+            except TimeoutError:
                 raise TimeoutError("Timed out waiting for contract details")
+            except Exception as e:
+                raise Exception(f"Error getting contract details: {e}")
 
-            # Get the result
-            if req_id in self.client.pending_contract_details:
-                result = self.client.pending_contract_details[req_id]
-                if result["error"]:
-                    raise Exception(f"Error getting contract details: {result['error']}")
-                if not result["details"]:
-                    raise Exception("No contract details found")
-                return result["details"]
-
-            raise Exception("Failed to get contract details")
+            if not results:
+                raise Exception("No contract details found")
+            
+            # Return the first detail to match previous behavior
+            return results[0]
 
         except Exception as e:
-            if req_id in self.client.pending_contract_details:
-                del self.client.pending_contract_details[req_id]
+            logger.error(f"Error in get_contract_details: {e}", exc_info=True)
             raise Exception(f"Error in get_contract_details: {str(e)}")
 
     def get_option_chain(self, underlying_contract: Contract) -> OptionChain:
