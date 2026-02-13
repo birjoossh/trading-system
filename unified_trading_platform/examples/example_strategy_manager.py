@@ -19,7 +19,8 @@ def live_trading_example():
     paper_config = {"h5_path": h5_path}
     # Create strategy manager for live trading
     manager = StrategyManager(
-        venue="paper",  # Use paper trading broker
+        broker_name="paper",  # Use paper trading broker
+        exchange="NSE",       # Trade on NSE
         strategy_name="atm_short_straddle_1100_1515",
         start_date="2024-01-01",
         end_date="2024-12-31",
@@ -32,7 +33,8 @@ def live_trading_example():
             logger.info("✓ Strategy manager initialized successfully")
             logger.info(f"Run ID: {manager.run_id}")
             logger.info(f"Strategy: {manager.strategy_name}")
-            logger.info(f"Venue: {manager.venue}")
+            logger.info(f"Broker: {manager.broker_name}")
+            logger.info(f"Exchange: {manager.exchange}")
         else:
             logger.error("✗ Failed to initialize strategy manager")
             return
@@ -63,7 +65,8 @@ def backtesting_example():
 
     # Create strategy manager for backtesting
     manager = StrategyManager(
-        venue="paper",  # Use paper trading broker
+        broker_name="paper",  # Use paper trading broker
+        exchange="NSE",       # Trade on NSE
         strategy_name="atm_short_straddle_1100_1515",
         start_date="2024-01-01",
         end_date="2024-01-31",
@@ -108,7 +111,7 @@ def check_strategy_status():
     logger.info("\n=== Strategy Status Check ===")
 
     # This would typically be used to check status of a running strategy
-    manager = StrategyManager(venue="paper", strategy_name="atm_short_straddle_1100_1515")
+    manager = StrategyManager(broker_name="paper", exchange="NSE", strategy_name="atm_short_straddle_1100_1515")
 
     # Get status information
     status = manager.get_status()

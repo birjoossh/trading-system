@@ -30,6 +30,9 @@ class TradingSystem:
         # Initialize logger
         self.logger = get_logger(__name__)
 
+        # Validate config upfront
+        self._validate_config()
+
         self.data_manager = DataManager(db_path)
         self.order_manager = OrderManager(db_path)
         self.brokers = {}
@@ -46,6 +49,38 @@ class TradingSystem:
         self.event_engine = EventEngine()
         self.event_engine.start()
         self.event_engine.register(EventType.TICK, self._process_tick_event)
+
+    def _validate_config(self):
+        """Validate critical configuration parameters at startup."""
+        from unified_trading_platform.trading_core.config.config import settings
+
+        errors = []
+        warnings = []
+
+        # 1. default_exchange must be set
+        default_ex = settings.get("system.default_exchange")
+        if not default_ex:
+            errors.append("system.default_exchange is not set in config.yaml")
+        else:
+            # 2. Exchange config must exist for the default exchange
+            ex_cfg = settings.get_exchange_config(default_ex)
+            if not ex_cfg:
+                errors.append(f"No exchange config found for default exchange '{default_ex}'")
+            else:
+                if "trading_hours" not in ex_cfg:
+                    warnings.append(f"Exchange '{default_ex}' missing 'trading_hours' section")
+                if "currency" not in ex_cfg:
+                    warnings.append(f"Exchange '{default_ex}' missing 'currency'")
+                expiry_cfg = ex_cfg.get("expiry", {})
+                if not expiry_cfg:
+                    warnings.append(f"Exchange '{default_ex}' missing 'expiry' config")
+
+        for w in warnings:
+            self.logger.warning(f"Config warning: {w}")
+        if errors:
+            msg = "Config validation failed:\n  - " + "\n  - ".join(errors)
+            self.logger.error(msg)
+            raise ValueError(msg)
 
     def _process_tick_event(self, event: Event):
         """Process tick event: Store data and call user callback"""

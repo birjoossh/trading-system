@@ -22,33 +22,53 @@ def _detect_step(strikes: pd.Series, default: float = 50.0) -> float:
     return default
 
 
+from unified_trading_platform.trading_core.config.config import settings
+
 # Expiry inference (needed for delta computation)
-def _infer_expiry_dt(chain: pd.DataFrame, params: dict) -> datetime:
+def _infer_expiry_dt(chain: pd.DataFrame, params: dict, exchange: str) -> datetime:
+    """Infer expiry datetime. Exchange must be provided explicitly."""
+    
+    # helper to get close time
+    def _get_close_time():
+        exch_config = settings.get_exchange_config(exchange)
+        trading_hours = exch_config.get("trading_hours", {})
+        end_time_str = trading_hours.get("end", "15:30") 
+        return map(int, end_time_str.split(":"))
+
     # 1) Explicit from params (supports str/datetime-like)
     for k in ("expiry_dt", "expiry", "Expiry", "expiration", "Expiration"):
         if params and k in params and params[k] is not None:
-            dt = pd.to_datetime(params[k])
-            if isinstance(dt, pd.Series):
-                dt = dt.iloc[0]
-            # If date-only, set NSE close 15:30
-            if getattr(dt, "hour", 0) == 0 and getattr(dt, "minute", 0) == 0 and getattr(dt, "second", 0) == 0:
-                dt = dt.replace(hour=15, minute=30, second=0, microsecond=0)
-            return dt.to_pydatetime() if hasattr(dt, "to_pydatetime") else dt
+            dt_obj = pd.to_datetime(params[k])
+            if isinstance(dt_obj, pd.Series):
+                dt_obj = dt_obj.iloc[0]
+            
+            end_h, end_m = _get_close_time()
+
+            # If date-only, set exchange close time
+            if getattr(dt_obj, "hour", 0) == 0 and getattr(dt_obj, "minute", 0) == 0 and getattr(dt_obj, "second", 0) == 0:
+                dt_obj = dt_obj.replace(hour=end_h, minute=end_m, second=0, microsecond=0)
+            
+            return dt_obj.to_pydatetime() if hasattr(dt_obj, "to_pydatetime") else dt_obj
+
     # 2) From chain columns
     for col in ("Expiry", "expiry", "Expiration", "expiration"):
         if col in chain.columns and not chain[col].dropna().empty:
             ts = pd.to_datetime(chain[col].dropna())
             # Use the most common expiry or, if ambiguous, the max
             if not ts.mode().empty:
-                dt = ts.mode().iloc[0]
+                dt_obj = ts.mode().iloc[0]
             else:
-                dt = ts.max()
-            dt = dt.replace(hour=15, minute=30, second=0, microsecond=0)
-            return dt.to_pydatetime() if hasattr(dt, "to_pydatetime") else dt
+                dt_obj = ts.max()
+            
+            end_h, end_m = _get_close_time()
+
+            dt_obj = dt_obj.replace(hour=end_h, minute=end_m, second=0, microsecond=0)
+            return dt_obj.to_pydatetime() if hasattr(dt_obj, "to_pydatetime") else dt_obj
+            
     raise ValueError("expiry_dt not provided and no expiry column found in chain")
 
 
-def select_strike(chain: pd.DataFrame, option_type: str, atm_price: float, criteria: StrikeCriteria) -> float:
+def select_strike(chain: pd.DataFrame, option_type: str, atm_price: float, criteria: StrikeCriteria, exchange: str | None = None) -> float:
     """
     Select a strike from the provided option chain.
 
@@ -82,15 +102,17 @@ def select_strike(chain: pd.DataFrame, option_type: str, atm_price: float, crite
     base = round(float(atm_price) / step) * step  # ATM strike from underlying
 
     def nearest_strike(target: float) -> float:
-        return float(df.iloc[(df["strike"] - target).abs().argsort()].iloc[0]["strike"])
+        # Use simple abs difference minimization
+        idx = (df["strike"] - target).abs().idxmin()
+        return float(df.loc[idx, "strike"])
 
     def ce_pe_atm_prices() -> tuple[float, float, float]:
         ce = chain[chain["option_type"].str.upper() == "CE"].copy()
         pe = chain[chain["option_type"].str.upper() == "PE"].copy()
         if ce.empty or pe.empty:
             raise ValueError("Both CE and PE chains are required for this selection mode")
-        ce_strike = float(ce.iloc[(ce["strike"] - base).abs().argsort()].iloc[0]["strike"])
-        pe_strike = float(pe.iloc[(pe["strike"] - base).abs().argsort()].iloc[0]["strike"])
+        ce_strike = float(ce.loc[(ce["strike"] - base).abs().idxmin(), "strike"])
+        pe_strike = float(pe.loc[(pe["strike"] - base).abs().idxmin(), "strike"])
         ce_px = float(ce[ce["strike"] == ce_strike].iloc[0]["Close"])
         pe_px = float(pe[pe["strike"] == pe_strike].iloc[0]["Close"])
         return ce_px, pe_px, base
@@ -124,7 +146,7 @@ def select_strike(chain: pd.DataFrame, option_type: str, atm_price: float, crite
     # --- CLOSEST_PREMIUM ---
     if mode == "CLOSEST_PREMIUM":
         tgt = float(params.get("premium", params.get("target", 100)))
-        return float(df.iloc[(df["Close"] - tgt).abs().argsort()].iloc[0]["strike"])
+        return float(df.loc[(df["Close"] - tgt).abs().idxmin(), "strike"])
 
     # --- PREMIUM_LE ---
     if mode == "PREMIUM_LE":
@@ -191,13 +213,15 @@ def select_strike(chain: pd.DataFrame, option_type: str, atm_price: float, crite
         ce_px, pe_px, _ = ce_pe_atm_prices()
         straddle = ce_px + pe_px
         tgt_prem = (pct / 100.0) * straddle
-        return float(df.iloc[(df["Close"] - tgt_prem).abs().argsort()].iloc[0]["strike"])
+        return float(df.loc[(df["Close"] - tgt_prem).abs().idxmin(), "strike"])
 
     # --- CLOSEST DELTA ---
     if mode == "CLOSEST_DELTA":
         # Ensure Delta is available by computing IV/Delta if missing
         try:
-            expiry_dt = _infer_expiry_dt(chain, params)
+            if not exchange:
+                raise ValueError("CLOSEST_DELTA mode requires 'exchange' to be passed to select_strike()")
+            expiry_dt = _infer_expiry_dt(chain, params, exchange)
         except Exception as e:
             raise ValueError(f"CLOSEST_DELTA requires expiry: {e}")
         full = ensure_delta(
@@ -218,7 +242,7 @@ def select_strike(chain: pd.DataFrame, option_type: str, atm_price: float, crite
             d = d / 100.0  # accept 0-100 inputs
         t = target / 100.0 if abs(target) > 1 else abs(target)
         diff = (d - t).abs()
-        return float(df.iloc[diff.argsort()].iloc[0]["strike"])
+        return float(df.loc[diff.idxmin(), "strike"])
 
     # --- DELTA_RANGE ---
     if mode == "DELTA_RANGE":

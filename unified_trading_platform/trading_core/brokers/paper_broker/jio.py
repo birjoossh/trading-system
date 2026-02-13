@@ -16,7 +16,8 @@ class JioH5Adapter:
     # Reads daily .h5 with '/tick_data' and exposes:
     # spot_series(), futures_series(), options_table().
 
-    def __init__(self, h5_path: Path):
+    def __init__(self, h5_path: Path, exchange: str):
+        self.exchange = exchange
         if not h5_path.exists():
             raise FileNotFoundError(h5_path)
         self.h5_path = h5_path
@@ -126,7 +127,7 @@ class JioH5Adapter:
         if "Expiry" not in opt.columns:
             opt["Expiry"] = pd.NaT
         opt["Timestamp"] = opt.index.floor("1min")
-        opt["Exchange"] = "NSE"
+        opt["Exchange"] = self.exchange
         # Resample and aggregate
         result = (
             opt.groupby(["tsym", "OptionType", "Strike", "Expiry", pd.Grouper(freq="1min")], observed=True)
@@ -155,7 +156,7 @@ class JioH5Adapter:
     ) -> pd.DataFrame:
         df = self._read_tick()
 
-        df["exchange"] = "NSE"  # fixme: exchnage is not populated in the data dump. setting NSE for now
+        df["exchange"] = self.exchange  # read from config, no hardcoded exchange
 
         if "tsym" not in df.columns:
             raise ValueError("tick_data lacks trading symbol column")

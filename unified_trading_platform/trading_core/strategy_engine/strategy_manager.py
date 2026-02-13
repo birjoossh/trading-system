@@ -47,13 +47,15 @@ class StrategyManager:
 
     def __init__(
         self,
-        venue: str,
+        broker_name: str,
+        exchange: str,
         strategy_name: str,
         start_date: Optional[str] = None,
         end_date: Optional[str] = None,
         db_path: str = "trading_system.db",
     ):
-        self.venue = venue
+        self.broker_name = broker_name
+        self.exchange = exchange
         self.strategy_name = strategy_name
         self.start_date = start_date
         self.end_date = end_date
@@ -104,24 +106,25 @@ class StrategyManager:
             # Create run configuration entry
             self.run_id = create_run_config(
                 db_path=self.db_path,
-                venue=self.venue,
+                broker_name=self.broker_name,
+                exchange=self.exchange,
                 strategy_name=self.strategy_name,
                 start_date=self.start_date,
                 end_date=self.end_date,
                 initial_portfolio={},  # Will be updated after getting broker positions
                 exit_time=self.strategy_config.exit_time,
             )
-            exch_config = self.config.get_broker_config(self.venue)
-            logger.debug(f"Broker config: {exch_config}")
+            broker_config = self.config.get_broker_config(self.broker_name)
+            logger.debug(f"Broker config: {broker_config}")
 
             self._additional_config = additional_config or {}
 
             self.trading_system.add_broker(
-                name=self.venue,
-                broker_type=exch_config.get("broker_type", self.venue),
-                host=exch_config.get("host"),
-                port=exch_config.get("port"),
-                client_id=exch_config.get("client_id", 1),
+                name=self.broker_name,
+                broker_type=broker_config.get("broker_type", self.broker_name),
+                host=broker_config.get("host"),
+                port=broker_config.get("port"),
+                client_id=broker_config.get("client_id", 1),
                 **self._additional_config,
             )
 
@@ -140,11 +143,12 @@ class StrategyManager:
             )
             self.end_date = current_date if not self.end_date else self.end_date
 
-            # Derive currency from venue (extend this mapping as needed)
-            venue_currency_map = {"NSE": "INR", "BSE": "INR"}
-            currency = venue_currency_map.get(self.venue.upper(), "USD")
+            # Derive currency from exchange config
+            from unified_trading_platform.trading_core.config.config import settings
+            exch_cfg = settings.get_exchange_config(self.exchange)
+            currency = exch_cfg.get("currency")
 
-            self.strategy_engine = UnifiedStrategyEngine(self.strategy_config, exchange=self.venue, currency=currency)
+            self.strategy_engine = UnifiedStrategyEngine(self.strategy_config, exchange=self.exchange, currency=currency)
             self.strategy_engine.initialize(
                 current_date=current_date,
                 entry_time=self.strategy_config.entry_time,
@@ -226,11 +230,11 @@ class StrategyManager:
         """Subscribe to real-time market data"""
         sub_id = self.trading_system.subscribe_market_data(
             self.strategy_config.symbol,
-            self.venue,
+            self.exchange,
             self._on_tick_callback,
             SecurityType.STOCK,
             self.strategy_config.currency,
-            self.venue,
+            self.broker_name,
         )
         logger.info(f"Subscribed to market data with subscription ID: {sub_id}")
 
@@ -354,7 +358,7 @@ class StrategyManager:
             return
 
         logger.info(f"Loading options table from {h5_path} for backtest...")
-        adapter = JioH5Adapter(Path(h5_path))
+        adapter = JioH5Adapter(Path(h5_path), exchange=self.exchange)
         self._options_table = adapter.options_table()
         logger.info(f"Loaded {len(self._options_table)} option price rows")
 
@@ -398,7 +402,7 @@ class StrategyManager:
             symbol = meta["Symbol"]
             rows.append(
                 {
-                    "underlying_symbol": symbol.split("2")[0] if isinstance(symbol, str) else "NIFTY",
+                    "underlying_symbol": symbol.split("2")[0] if isinstance(symbol, str) else self.strategy_config.symbol,
                     "expiry": meta["Expiry"],
                     "strike": strike,
                     "option_type": opt_type,
@@ -457,7 +461,7 @@ class StrategyManager:
                 time_in_force="DAY",
             )
             # Submit order
-            order_id = self.trading_system.order_manager.submit_order(signal.contract, order, self.venue)
+            order_id = self.trading_system.order_manager.submit_order(signal.contract, order, self.broker_name)
 
             # Add to order tracker for O(1) lookups
             self.order_tracker[order_id] = {
@@ -523,12 +527,12 @@ class StrategyManager:
         # Get historical data
         historical_data = self.trading_system.get_historical_data(
             symbol=contract.symbol,
-            exchange="NSE",
+            exchange=self.exchange,
             security_type=contract.security_type,
             currency=contract.currency,
             duration=f"{duration_days} D",
             bar_size="1min",
-            broker_name=self.venue,
+            broker_name=self.broker_name,
         )
         return historical_data
 
@@ -537,7 +541,7 @@ class StrategyManager:
         return Contract(
             symbol=self.strategy_config.symbol,
             security_type=SecurityType.STOCK,
-            exchange=self.venue,
+            exchange=self.exchange,
             currency=self.strategy_config.currency,
             conId=756733,
         )
@@ -565,14 +569,14 @@ class StrategyManager:
         )
         logger.info(f"Fetching option chain for contract: {contract}")
         # TODO: This should be for the specified timestamp. Right now we don't have an implementation for that
-        self._cached_option_chain = self.trading_system.get_option_chain(self.venue, contract)
+        self._cached_option_chain = self.trading_system.get_option_chain(self.broker_name, contract)
         return self._cached_option_chain
 
     def _get_initial_portfolio(self) -> Dict[str, Any]:
         """Get initial portfolio from broker"""
         try:
             positions = self.trading_system.get_positions()
-            account_info = self.trading_system.get_account_info(self.venue)
+            account_info = self.trading_system.get_account_info(self.broker_name)
 
             return {
                 "positions": positions,
@@ -659,7 +663,8 @@ class StrategyManager:
             "run_id": self.run_id,
             "is_running": self.is_running,
             "is_initialized": self.is_initialized,
-            "venue": self.venue,
+            "broker_name": self.broker_name,
+            "exchange": self.exchange,
             "strategy_name": self.strategy_name,
             "start_date": self.start_date,
             "end_date": self.end_date,

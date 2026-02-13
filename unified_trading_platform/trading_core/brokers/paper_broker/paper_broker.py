@@ -79,7 +79,7 @@ class PaperBroker(BrokerInterface):
 
     # ---- Option Chain ----
     def get_option_chain(self, contract: Contract) -> OptionChain:
-        df = JioH5Adapter(self.config.h5_path)
+        df = JioH5Adapter(self.config.h5_path, exchange=contract.exchange)
         option_chain = df.options_table()
         logger.debug("option_chain = %s", option_chain)
 
@@ -190,7 +190,7 @@ class PaperBroker(BrokerInterface):
             df = df.sort_values("timestamp")
             # Filter by duration ending at last available timestamp
         elif self.mode == "h5":
-            ja = JioH5Adapter(self.config.h5_path)
+            ja = JioH5Adapter(self.config.h5_path, exchange=contract.exchange)
 
             optionType = None
             if contract.security_type == SecurityType.STOCK:
@@ -307,7 +307,7 @@ class PaperBroker(BrokerInterface):
                 logger.debug("CSV data shape: %s", df.shape)
                 logger.debug("\n%s", df.head())
             else:
-                tick_data = JioH5Adapter(self.config.h5_path)
+                tick_data = JioH5Adapter(self.config.h5_path, exchange=contract.exchange)
                 df = tick_data.tick_df(contract.symbol, contract.strike, contract.option_right, contract.expiry)
                 logger.debug("H5 data shape: %s", df.shape)
                 logger.debug("\n%s", df.head())

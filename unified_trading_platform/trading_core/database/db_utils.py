@@ -18,7 +18,9 @@ def init_strategy_tables(db_path: str = "trading_system.db"):
             CREATE TABLE IF NOT EXISTS run_config (
                 run_id TEXT PRIMARY KEY,
                 timestamp TEXT,
-                venue TEXT,
+                venue TEXT,  -- deprecated, kept for backward compat
+                broker_name TEXT,
+                exchange TEXT,
                 strategy_name TEXT,
                 start_date TEXT,
                 end_date TEXT,
@@ -63,7 +65,8 @@ def init_strategy_tables(db_path: str = "trading_system.db"):
 
 def create_run_config(
     db_path: str,
-    venue: str,
+    broker_name: str,
+    exchange: str,
     strategy_name: str,
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
@@ -78,14 +81,16 @@ def create_run_config(
         conn.execute(
             """
             INSERT INTO run_config 
-            (run_id, timestamp, venue, strategy_name, start_date, end_date, 
+            (run_id, timestamp, venue, broker_name, exchange, strategy_name, start_date, end_date, 
              initial_portfolio, status, exit_time, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
             (
                 run_id,
                 timestamp,
-                venue,
+                f"{broker_name}:{exchange}",  # backward compat venue column
+                broker_name,
+                exchange,
                 strategy_name,
                 start_date,
                 end_date,

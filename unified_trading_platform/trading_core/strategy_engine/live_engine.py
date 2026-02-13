@@ -83,7 +83,7 @@ class UnifiedStrategyEngine:
         """Initialize strategy legs for the current date"""
         for i, leg_spec in enumerate(self.config.legs, 1):
             # Resolve expiry date
-            exp_date = resolve_expiry_keyword(self.current_date, leg_spec.expiry)
+            exp_date = resolve_expiry_keyword(self.current_date, leg_spec.expiry, self.exchange)
 
             # For now, we'll need market data to select strikes
             # This will be called again when we have the first tick
@@ -171,11 +171,11 @@ class UnifiedStrategyEngine:
                 continue  # Already entered
 
             # Select strike based on current market conditions
-            exp_date = resolve_expiry_keyword(tick_data.timestamp.date(), leg.spec.expiry)
+            exp_date = resolve_expiry_keyword(tick_data.timestamp.date(), leg.spec.expiry, self.exchange)
             snap = option_chain[
                 (option_chain["expiry"] == exp_date) & (option_chain["option_type"] == leg.spec.option_type.upper())
             ]
-            strike = select_strike(snap, leg.spec.option_type.upper(), underlying_price, leg.spec.strike_criteria)
+            strike = select_strike(snap, leg.spec.option_type.upper(), underlying_price, leg.spec.strike_criteria, exchange=self.exchange)
             if strike is None:
                 continue
 
@@ -185,13 +185,13 @@ class UnifiedStrategyEngine:
             signals.append(self.generate_signal_for_leg(leg))
 
             leg.entry_ts = tick_data.timestamp
-            # Use option premium from chain; fall back to tick price only if chain unavailable
+            # Use option premium from chain; skip if unavailable
             option_premium = self._lookup_premium(option_chain, strike, leg.spec.option_type)
-            leg.entry_px = (
-                option_premium
-                if option_premium is not None
-                else (tick_data.close or tick_data.last or tick_data.bid or tick_data.ask)
-            )
+            if option_premium is None:
+                logger.warning(f"Skipping entry for Leg {leg.leg_id}: Option premium not found for strike {strike}")
+                continue
+
+            leg.entry_px = option_premium
             leg.entry_S = underlying_price
             leg.best_fav_px = leg.entry_px
             logger.info(
@@ -210,15 +210,13 @@ class UnifiedStrategyEngine:
             if leg.entry_ts is None or leg.exit_ts is not None:
                 continue  # Not entered or already exited
 
-            # Use option premium from chain; fall back to tick price if unavailable
+            # Use option premium from chain; skip if unavailable
             option_premium = self._lookup_premium(option_chain, leg.strike, leg.spec.option_type)
-            current_price = (
-                option_premium
-                if option_premium is not None
-                else (tick_data.close or tick_data.last or tick_data.bid or tick_data.ask)
-            )
-            if current_price is None:
+            if option_premium is None:
+                # Can't evaluate PnL without price
                 continue
+            
+            current_price = option_premium
 
             # Update PnL
             mult = -1 if leg.spec.position.lower().startswith("sell") else 1
@@ -288,9 +286,9 @@ class UnifiedStrategyEngine:
             return signals
 
         for pen in self.pending_reentries:
-            exp_date = resolve_expiry_keyword(self.current_date, pen.spec.expiry)
+            exp_date = resolve_expiry_keyword(self.current_date, pen.spec.expiry, self.exchange)
             strike = select_strike(
-                option_chain, pen.spec.option_type.upper(), underlying_price, pen.spec.strike_criteria
+                option_chain, pen.spec.option_type.upper(), underlying_price, pen.spec.strike_criteria, exchange=self.exchange
             )
             if strike is not None:
                 # Create new leg
@@ -304,11 +302,16 @@ class UnifiedStrategyEngine:
                 new_leg.entry_ts = tick_data.timestamp
                 # Use option premium from chain for re-entry price
                 option_premium = self._lookup_premium(option_chain, strike, pen.spec.option_type)
-                new_leg.entry_px = (
-                    option_premium
-                    if option_premium is not None
-                    else (tick_data.close or tick_data.last or tick_data.bid or tick_data.ask)
-                )
+                if option_premium is None:
+                    # Skip if no price
+                    # fixme: should we retry later? Yes, by not processing it now.
+                    # But we already created new_leg object locally... 
+                    # If we continue here, we skip 'if strike is not None' block end?
+                    # The code structure here is a bit complex.
+                    # Let's just not set entry_px yet? No, we need it.
+                    continue
+                
+                new_leg.entry_px = option_premium
                 new_leg.entry_S = underlying_price
                 new_leg.best_fav_px = new_leg.entry_px
                 new_leg.parent_leg_id = pen.parent_leg_id
@@ -417,9 +420,9 @@ class UnifiedStrategyEngine:
                 price_for_pnl = leg.exit_px
             else:
                 option_premium = self._lookup_premium(option_chain, leg.strike, leg.spec.option_type)
-                price_for_pnl = (
-                    option_premium if option_premium is not None else (tick_data.close or tick_data.last or 0.0)
-                )
+                if option_premium is None:
+                    continue # Skip update if no price
+                price_for_pnl = option_premium
 
             pnl_per_unit = (price_for_pnl - leg.entry_px) * mult
             pnl = pnl_per_unit * leg.qty

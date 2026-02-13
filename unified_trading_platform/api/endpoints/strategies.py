@@ -33,7 +33,8 @@ def initialize_strategy(req: StrategyInitializeRequest):
     """Initialize a strategy for execution"""
     try:
         manager = StrategyManagerImpl(
-            venue=req.venue,
+            broker_name=req.broker_name,
+            exchange=req.exchange,
             strategy_name=req.strategy_name,
             start_date=req.start_date,
             end_date=req.end_date,
@@ -52,7 +53,8 @@ def initialize_strategy(req: StrategyInitializeRequest):
             run_id=status.get("run_id"),
             is_running=status.get("is_running", False),
             is_initialized=status.get("is_initialized", False),
-            venue=status.get("venue"),
+            broker_name=status.get("broker_name"),
+            exchange=status.get("exchange"),
             strategy_name=status.get("strategy_name"),
             start_date=status.get("start_date"),
             end_date=status.get("end_date"),
@@ -112,7 +114,8 @@ def get_strategy_status(run_id: str):
             run_id=status.get("run_id"),
             is_running=status.get("is_running", False),
             is_initialized=status.get("is_initialized", False),
-            venue=status.get("venue"),
+            broker_name=status.get("broker_name"),
+            exchange=status.get("exchange"),
             strategy_name=status.get("strategy_name"),
             start_date=status.get("start_date"),
             end_date=status.get("end_date"),

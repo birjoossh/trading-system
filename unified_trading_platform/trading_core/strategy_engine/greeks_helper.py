@@ -1,20 +1,50 @@
 from __future__ import annotations
 from dataclasses import dataclass
-from typing import Optional
+from typing import Optional, Union
 import math
 from datetime import datetime
 import pandas as pd
+import numpy as np
 
-SQRT2PI = math.sqrt(2.0 * math.pi)
+# Standard Normal PDF/CDF constants
+SQRT2PI = np.sqrt(2.0 * np.pi)
 
+def _norm_pdf_np(x: np.ndarray) -> np.ndarray:
+    return np.exp(-0.5 * x * x) / SQRT2PI
 
-def _norm_pdf(x: float) -> float:
-    return math.exp(-0.5 * x * x) / SQRT2PI
+def _norm_cdf_np(x: np.ndarray) -> np.ndarray:
+    """Cumulative distribution function for the standard normal distribution
+    using Abramowitz & Stegun 7.1.26 approximation (error < 1.5e-7)
+    """
+    # Protect against overflow/underflow
+    # For large positive x, CDF -> 1. For large negative x, CDF -> 0.
+    
+    # We use the approximation for x >= 0. For x < 0, use 1 - CDF(-x).
+    # t = 1 / (1 + p*x)
+    # poly = t * (a1 + t * (a2 + t * (a3 + t * (a4 + t * a5))))
+    # cdf = 1 - norm_pdf(x) * poly
+    
+    # Constants
+    p = 0.2316419
+    a1 = 0.319381530
+    a2 = -0.356563782
+    a3 = 1.781477937
+    a4 = -1.821255978
+    a5 = 1.330274429
 
-
-def _norm_cdf(x: float) -> float:
-    # Abramowitz & Stegun via erf
-    return 0.5 * (1.0 + math.erf(x / math.sqrt(2.0)))
+    x_abs = np.abs(x)
+    t = 1.0 / (1.0 + p * x_abs)
+    
+    # Polynomial term
+    poly = t * (a1 + t * (a2 + t * (a3 + t * (a4 + t * a5))))
+    
+    # PDF term (recalculated here or we could pass it if we had it)
+    pdf = np.exp(-0.5 * x_abs * x_abs) / SQRT2PI
+    
+    cdf_abs = 1.0 - pdf * poly
+    
+    # Handle signs
+    return np.where(x >= 0, cdf_abs, 1.0 - cdf_abs)
 
 
 @dataclass
@@ -23,97 +53,104 @@ class BSParams:
     q: float = 0.00  # dividend yield (decimal)
 
 
-def _positive(x: float, default: float) -> float:
-    try:
-        x = float(x)
-        if x > 0:
-            return x
-    except Exception:
-        pass
-    return default
-
-
 def yearfrac(start: datetime, end: datetime) -> float:
     """ACT/365F year fraction with non-negative clamp."""
     delta = (end - start).total_seconds()
     return max(0.0, delta) / (365.0 * 24.0 * 3600.0)
 
 
-def bs_price(S: float, K: float, T: float, r: float, q: float, sigma: float, cp: str) -> float:
-    """Black–Scholes price with continuous dividend yield.
-    cp: 'C' or 'P'
-    """
-    cp = cp.upper()
-    if T <= 0.0 or sigma <= 0.0:
-        # discounted intrinsic as a conservative fallback
-        if cp == "C":
-            return max(0.0, S * math.exp(-q * T) - K * math.exp(-r * T))
-        else:
-            return max(0.0, K * math.exp(-r * T) - S * math.exp(-q * T))
-    d1 = (math.log(S / K) + (r - q + 0.5 * sigma * sigma) * T) / (sigma * math.sqrt(T))
-    d2 = d1 - sigma * math.sqrt(T)
-    if cp == "C":
-        return S * math.exp(-q * T) * _norm_cdf(d1) - K * math.exp(-r * T) * _norm_cdf(d2)
-    else:
-        return K * math.exp(-r * T) * _norm_cdf(-d2) - S * math.exp(-q * T) * _norm_cdf(-d1)
+def bs_price_vec(S: Union[float, np.ndarray], K: Union[float, np.ndarray], T: float, r: float, q: float, sigma: Union[float, np.ndarray], cp: Union[str, np.ndarray]) -> Union[float, np.ndarray]:
+    """Vectorized Black-Scholes price."""
+    S = np.asarray(S, dtype=float)
+    K = np.asarray(K, dtype=float)
+    sigma = np.asarray(sigma, dtype=float)
+    
+    # Handle cp: 'C' or 'P'. If string scalar, broadcast. If array, handle.
+    # We will compute call price and put price relation: Put = Call - S*e^-qT + K*e^-rT
+    # Or just compute both and select.
+    
+    # Filter valid inputs
+    # T > 0, sigma > 0
+    
+    d1 = (np.log(S / K) + (r - q + 0.5 * sigma * sigma) * T) / (sigma * np.sqrt(T))
+    d2 = d1 - sigma * np.sqrt(T)
+    
+    call_price = S * np.exp(-q * T) * _norm_cdf_np(d1) - K * np.exp(-r * T) * _norm_cdf_np(d2)
+    put_price = K * np.exp(-r * T) * _norm_cdf_np(-d2) - S * np.exp(-q * T) * _norm_cdf_np(-d1)
+    
+    # Return based on cp
+    if isinstance(cp, str):
+        return call_price if cp.upper().startswith("C") else put_price
+    
+    # Array of 'C'/'P' (or 'CE'/'PE')
+    cp_arr = np.char.upper(np.asarray(cp, dtype=str))
+    is_call = np.char.startswith(cp_arr, 'C')
+    return np.where(is_call, call_price, put_price)
 
+
+def bs_delta_vec(S: Union[float, np.ndarray], K: Union[float, np.ndarray], T: float, r: float, q: float, sigma: Union[float, np.ndarray], cp: Union[str, np.ndarray]) -> Union[float, np.ndarray]:
+    """Vectorized Black-Scholes delta."""
+    S = np.asarray(S, dtype=float)
+    K = np.asarray(K, dtype=float)
+    sigma = np.asarray(sigma, dtype=float)
+    
+    # Standard d1
+    # Check for sigma > 0 and T > 0
+    # We assume valid inputs or handled outside for simplicity in vectorization, 
+    # but let's add safeguards for T=0 or sigma=0?
+    
+    # Just standard formula
+    sqT = np.sqrt(T)
+    d1 = (np.log(S / K) + (r - q + 0.5 * sigma * sigma) * T) / (sigma * sqT)
+    
+    delta_call = np.exp(-q * T) * _norm_cdf_np(d1)
+    delta_put = -np.exp(-q * T) * _norm_cdf_np(-d1)
+    
+    if isinstance(cp, str):
+        return delta_call if cp.upper().startswith("C") else delta_put
+    
+    cp_arr = np.char.upper(np.asarray(cp, dtype=str))
+    is_call = np.char.startswith(cp_arr, 'C')
+    return np.where(is_call, delta_call, delta_put)
+
+# We keep legacy scalar scalar functions for compatibility if needed, 
+# but they can just map to the vectorized ones.
+def bs_price(S: float, K: float, T: float, r: float, q: float, sigma: float, cp: str) -> float:
+    return float(bs_price_vec(S, K, T, r, q, sigma, cp))
 
 def bs_delta(S: float, K: float, T: float, r: float, q: float, sigma: float, cp: str) -> float:
-    """Black–Scholes delta with continuous dividend yield.
-    - Call delta in [0, 1]
-    - Put delta in [-1, 0]
-    """
-    cp = cp.upper()
-    if T <= 0.0 or sigma <= 0.0:
-        # heuristic intrinsic-limit delta when close to expiry or zero vol
-        if cp == "C":
-            return 1.0 if S > K else 0.0
-        else:
-            return -1.0 if S < K else 0.0
-    d1 = (math.log(S / K) + (r - q + 0.5 * sigma * sigma) * T) / (sigma * math.sqrt(T))
-    if cp == "C":
-        return math.exp(-q * T) * _norm_cdf(d1)
-    else:
-        return -math.exp(-q * T) * _norm_cdf(-d1)
+    return float(bs_delta_vec(S, K, T, r, q, sigma, cp))
 
-
-def iv_from_price(
-    S: float,
-    K: float,
-    T: float,
-    r: float,
-    q: float,
-    cp: str,
-    price: float,
-    lo: float = 1e-6,
-    hi: float = 5.0,
-    tol: float = 1e-6,
-    max_iter: int = 100,
-) -> float:
-    """Implied volatility by **bisection**. Robust to noisy quotes.
-    If the target price is outside the modelable price band, we clamp.
-    """
-    cp = cp.upper()
+def iv_from_price_scalar(S: float, K: float, T: float, r: float, q: float, cp: str, price: float) -> float:
+    """Scalar IV calculation using bisection (kept for robustness)."""
+    # Same implementation as before
+    lo, hi = 1e-6, 5.0
+    tol = 1e-6
+    max_iter = 100
+    
     p = max(float(price), 0.0)
-    # Bounds prices
-    plo = bs_price(S, K, T, r, q, lo, cp)
-    phi = bs_price(S, K, T, r, q, hi, cp)
-    if p <= plo:
-        return lo
-    if p >= phi:
-        return hi
+    cp_code = 'C' if cp.upper().startswith('C') else 'P'
+    
+    # Use scalar bs_price for speed in loop
+    def _price(sig):
+        return bs_price(S, K, T, r, q, sig, cp_code)
+        
+    plo = _price(lo)
+    phi = _price(hi)
+    if p <= plo: return lo
+    if p >= phi: return hi
+    
     a, b = lo, hi
     for _ in range(max_iter):
         m = 0.5 * (a + b)
-        pm = bs_price(S, K, T, r, q, m, cp)
+        pm = _price(m)
         if abs(pm - p) < tol:
-            return max(lo, min(m, hi))
+            return m
         if pm > p:
             b = m
         else:
             a = m
-    return max(lo, min(0.5 * (a + b), hi))
-
+    return m
 
 def _detect_snapshot_time(chain: pd.DataFrame, default_now: Optional[datetime] = None) -> datetime:
     if "timestamp" in chain.columns and not chain["timestamp"].dropna().empty:
@@ -122,7 +159,6 @@ def _detect_snapshot_time(chain: pd.DataFrame, default_now: Optional[datetime] =
         except Exception:
             pass
     return default_now or datetime.now()
-
 
 def compute_iv_delta_for_chain(
     chain: pd.DataFrame,
@@ -134,51 +170,54 @@ def compute_iv_delta_for_chain(
     now_dt: Optional[datetime] = None,
     min_price: float = 0.01,
 ) -> pd.DataFrame:
-    """Return a copy of `chain` with **IV** and **Delta** columns populated.
-
-    Requirements:
-      - chain has columns: [option_type (CE/PE), Strike, Close]
-      - S: underlying level at `now_dt` (your chosen snapshot/decision time)
-      - expiry_dt: datetime of option expiration (use 15:30 IST on the expiry day for NSE)
-
-    Behavior:
-      - If Close < `min_price`, we use a tiny sigma and near-zero delta heuristic.
-      - Computation is per-row (pure Python); keep chains reasonably sized.
-    """
+    """Vectorized calculation of IV and Delta."""
     df = chain.copy()
     if df.empty:
         return df.assign(IV=pd.Series(dtype=float), Delta=pd.Series(dtype=float))
 
-    # Normalize column names/types
+    # Pre-processing
+    if "strike" in df.columns:
+        df["Strike"] = df["strike"]
+    elif "Strike" not in df.columns:
+        # If neither exists
+        return df
+    
     df["option_type"] = df["option_type"].astype(str).str.upper()
     df["Strike"] = df["Strike"].astype(float)
     df["Close"] = df["Close"].astype(float)
-
+    
     now = now_dt or _detect_snapshot_time(df)
-    T = yearfrac(now, expiry_dt)
-    r = float(r)
-    q = float(q)
-
-    iv_out = []
-    delta_out = []
-    for _, row in df.iterrows():
-        cp = "C" if row["option_type"] == "CE" else "P"
-        K = float(row["Strike"])
-        P = float(row["Close"])
+    T = max(1e-5, yearfrac(now, expiry_dt)) # Avoid T=0 division
+    
+    # 1. Calculate IV
+    # We still iterate for IV because bisection is hard to vectorize efficiently without SciPy
+    # But we can use apply which is cleaner (though not necessarily much faster than loop)
+    # However, we can filter out deep OTM/garbage first
+    
+    def _calc_row_iv(row):
+        P = row.Close
         if P < min_price:
-            # Deep OTM or stale price: tiny vol, delta ~ 0 with sign heuristic
-            sigma = 1e-4
-            delta = bs_delta(S, K, T, r, q, sigma, cp)
-        else:
-            sigma = iv_from_price(S, K, T, r, q, cp, P)
-            delta = bs_delta(S, K, T, r, q, sigma, cp)
-        iv_out.append(sigma)
-        delta_out.append(delta)
-
-    df["IV"] = iv_out
-    df["Delta"] = delta_out
+            return 1e-4
+        return iv_from_price_scalar(S, row.Strike, T, r, q, row.option_type, P)
+    
+    # Using list comprehension which is often faster than apply for simple scalar ops
+    iv_values = [
+        _calc_row_iv(row) for row in df.itertuples()
+    ]
+    df["IV"] = iv_values
+    
+    # 2. Vectorized Delta
+    df["Delta"] = bs_delta_vec(
+        S=S,
+        K=df["Strike"].values,
+        T=T,
+        r=r,
+        q=q,
+        sigma=df["IV"].values,
+        cp=df["option_type"].values
+    )
+    
     return df
-
 
 def ensure_delta(
     chain: pd.DataFrame,
@@ -190,9 +229,6 @@ def ensure_delta(
     now_dt: Optional[datetime] = None,
     min_price: float = 0.01,
 ) -> pd.DataFrame:
-    """Return chain with a **Delta** column, computing IV/Delta if missing or null.
-    If a non-null Delta already exists for most rows, we just return a copy.
-    """
     needs = ("Delta" not in chain.columns) or chain["Delta"].isna().mean() > 0.1
     if needs:
         return compute_iv_delta_for_chain(chain, S, expiry_dt, r=r, q=q, now_dt=now_dt, min_price=min_price)

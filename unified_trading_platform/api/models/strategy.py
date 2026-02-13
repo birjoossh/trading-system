@@ -11,7 +11,8 @@ from unified_trading_platform.api.config import get_config_value
 class StrategyInitializeRequest(BaseModel):
     """Request to initialize a strategy"""
 
-    venue: str = Field(..., description="Broker venue name")
+    broker_name: str = Field(..., description="Broker to connect through (e.g. 'paper', 'interactive_brokers')")
+    exchange: str = Field(..., description="Exchange to trade on (e.g. 'NSE', 'NYSE')")
     strategy_name: str = Field(..., description="Strategy configuration name")
     start_date: Optional[str] = Field(default=None, description="Start date for backtesting (YYYY-MM-DD)")
     end_date: Optional[str] = Field(default=None, description="End date for backtesting (YYYY-MM-DD)")
@@ -27,7 +28,8 @@ class StrategyStatusResponse(BaseModel):
     run_id: Optional[str] = None
     is_running: bool
     is_initialized: bool
-    venue: str
+    broker_name: str
+    exchange: str
     strategy_name: str
     start_date: Optional[str] = None
     end_date: Optional[str] = None
