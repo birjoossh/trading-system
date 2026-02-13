@@ -58,7 +58,8 @@ from unified_trading_platform.trading_core.strategy_engine.strategy_manager impo
 
 # Create strategy manager
 manager = StrategyManager(
-    venue="paper",  # or "ib", "alpaca", etc.
+    broker_name="paper",  # or "ib", "alpaca", etc.
+    exchange="NSE",       # or "NYSE", "BSE", etc.
     strategy_name="atm_short_straddle_1100_1515"
 )
 
@@ -75,7 +76,8 @@ portfolio = manager.get_portfolio_summary()
 ```python
 # Historical backtesting
 manager = StrategyManager(
-    venue="paper",
+    broker_name="paper",
+    exchange="NSE",
     strategy_name="atm_short_straddle_1100_1515",
     start_date="2024-01-01",
     end_date="2024-01-31"
@@ -121,7 +123,8 @@ Strategies are defined in JSON files in the `strategies/` directory. Example:
 
 ### RUN_CONFIG Table
 - `run_id`: Unique identifier for each strategy run
-- `venue`: Broker name (paper, ib, etc.)
+- `broker_name`: Broker connection (paper, ib, etc.)
+- `exchange`: Exchange to trade on (NSE, NYSE, etc.)
 - `strategy_name`: Strategy configuration name
 - `start_date`/`end_date`: For backtesting periods
 - `status`: INITIAL, RUNNING, FINISHED, ERROR

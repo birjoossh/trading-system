@@ -14,37 +14,31 @@ logger = get_logger(__name__)
 from unified_trading_platform.trading_core.config.config import settings
 
 def _get_expiry_params(exchange: str) -> dict:
-    """Get numeric weekday params from config for any exchange"""
+    """Get numeric weekday params from config for any exchange.
+    All exchange-specific values come from config.yaml — no hardcoded defaults.
+    Generic fallback is Friday (4) if the config section is incomplete.
+    """
     config = settings.get_exchange_expiry_config(exchange)
-    
-    # Defaults (standard weekly options often expire Friday=4)
-    default_wd = 4 
-    if exchange == "NSE":
-        default_wd = 3 # Thursday standard fallback for NSE if config missing
-        
+    if not config:
+        logger.warning("No expiry config found for exchange '%s', using Friday default", exchange)
+
+    default_wd = config.get("weekly_day", 4)  # generic fallback: Friday
     wd_before = config.get("weekly_day_before", default_wd)
-    wd_after = config.get("weekly_day_after", config.get("weekly_day", default_wd))
-    switch_date = config.get("switch_date") # Optional
-    
+    wd_after = config.get("weekly_day_after", default_wd)
+    switch_date = config.get("switch_date")  # optional
+
     return {
         "switch_date": dt.date.fromisoformat(switch_date) if isinstance(switch_date, str) else switch_date,
         "wd_before": wd_before,
-        "wd_after": wd_after
+        "wd_after": wd_after,
     }
 
-def _resolve_exchange(exchange: str | None) -> str:
-    return exchange or settings.get_default_exchange()
+def weekly_expiry_for(date: dt.date, exchange: str) -> dt.date:
+    params = _get_expiry_params(exchange)
 
-def weekly_expiry_for(date: dt.date, exchange: str | None = None) -> dt.date:
-    ex = _resolve_exchange(exchange)
-    params = _get_expiry_params(ex)
-    
     if params["switch_date"]:
         wd = params["wd_after"] if date >= params["switch_date"] else params["wd_before"]
     else:
-        # No switch logic, just regular weekly day
-        # If 'weekly_day' was set, it would be in wd_after logic above implicitly depending on how we parsed
-        # Let's trust wd_after matches weekly_day if no switch
         wd = params["wd_after"]
 
     d = date
@@ -53,14 +47,11 @@ def weekly_expiry_for(date: dt.date, exchange: str | None = None) -> dt.date:
     return d
 
 
-def monthly_expiry_for(date: dt.date, exchange: str | None = None) -> dt.date:
-    ex = _resolve_exchange(exchange)
-    params = _get_expiry_params(ex)
-    
-    # Monthly often matches weekly day, or has specific rule. 
-    # For now assuming same day of week as weekly (e.g. Thursdays for NSE)
-    # But usually it's the LAST occurence in the month.
-    
+def monthly_expiry_for(date: dt.date, exchange: str) -> dt.date:
+    params = _get_expiry_params(exchange)
+
+    # Monthly uses the same weekday as weekly, but the LAST occurrence in the month.
+
     if params["switch_date"]:
         wd = params["wd_after"] if date >= params["switch_date"] else params["wd_before"]
     else:
@@ -74,20 +65,20 @@ def monthly_expiry_for(date: dt.date, exchange: str | None = None) -> dt.date:
     return d
 
 
-def next_weekly_expiry_for(date: dt.date, exchange: str | None = None) -> dt.date:
+def next_weekly_expiry_for(date: dt.date, exchange: str) -> dt.date:
     this = weekly_expiry_for(date, exchange)
     nxt = weekly_expiry_for(this + dt.timedelta(days=1), exchange)
     return nxt
 
 
-def next_monthly_expiry_for(date: dt.date, exchange: str | None = None) -> dt.date:
+def next_monthly_expiry_for(date: dt.date, exchange: str) -> dt.date:
     this = monthly_expiry_for(date, exchange)
     # Add roughly a month and find next expiry
     nm = (this.replace(day=1) + dt.timedelta(days=32)).replace(day=1)
     return monthly_expiry_for(nm, exchange)
 
 
-def resolve_expiry_keyword(date: dt.date, keyword: str, exchange: str | None = None) -> dt.date:
+def resolve_expiry_keyword(date: dt.date, keyword: str, exchange: str) -> dt.date:
     key = (keyword or "Weekly").replace(" ", "").lower()
     if key == "weekly":
         return weekly_expiry_for(date, exchange)

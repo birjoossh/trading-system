@@ -59,19 +59,18 @@ def test_infer_expiry_time():
     assert dt_nyse.hour == 16 and dt_nyse.minute == 0
     print("✓ Inferred time respects exchange config.")
 
-def test_default_exchange():
-    print("\nTesting Default Exchange Resolution...")
-    # Should resolve to NSE from config
+def test_explicit_exchange():
+    print("\nTesting Explicit Exchange Parameter...")
     d = dt.date(2025, 9, 2)
-    # Default is NSE, so Tuesday
-    exp = weekly_expiry_for(d, exchange=None)
-    print(f"Default Expiry for {d}: {exp} (Weekday: {exp.weekday()})")
-    assert exp.weekday() == 1 # Tuesday (NSE rule)
-    print("✓ Default exchange worked.")
+    # NSE after switch_date: Tuesday (weekday=1)
+    exp = weekly_expiry_for(d, exchange="NSE")
+    print(f"NSE Expiry for {d}: {exp} (Weekday: {exp.weekday()})")
+    assert exp.weekday() == 1  # Tuesday (NSE rule)
+    print("✓ Explicit exchange parameter worked.")
 
 if __name__ == "__main__":
     test_exchange_config_load()
     test_expiry_logic()
     test_infer_expiry_time()
-    test_default_exchange()
+    test_explicit_exchange()
     print("\nALL TESTS PASSED")

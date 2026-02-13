@@ -22,7 +22,7 @@ class RunConfig(Base):  # type: ignore
     __tablename__ = "run_config"
     # run_id = Column(String, primary_key=True)
     # timestamp = Column(Text)
-    # venue = Column(String)
+    # venue = Column(String)  # deprecated, kept for backward compat\n    # broker_name = Column(String)\n    # exchange = Column(String)
     # strategy_name = Column(String)
     # start_date = Column(Text, nullable=True)
     # end_date = Column(Text, nullable=True)

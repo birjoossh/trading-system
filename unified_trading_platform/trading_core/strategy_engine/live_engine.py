@@ -83,7 +83,7 @@ class UnifiedStrategyEngine:
         """Initialize strategy legs for the current date"""
         for i, leg_spec in enumerate(self.config.legs, 1):
             # Resolve expiry date
-            exp_date = resolve_expiry_keyword(self.current_date, leg_spec.expiry)
+            exp_date = resolve_expiry_keyword(self.current_date, leg_spec.expiry, self.exchange)
 
             # For now, we'll need market data to select strikes
             # This will be called again when we have the first tick
@@ -171,11 +171,11 @@ class UnifiedStrategyEngine:
                 continue  # Already entered
 
             # Select strike based on current market conditions
-            exp_date = resolve_expiry_keyword(tick_data.timestamp.date(), leg.spec.expiry)
+            exp_date = resolve_expiry_keyword(tick_data.timestamp.date(), leg.spec.expiry, self.exchange)
             snap = option_chain[
                 (option_chain["expiry"] == exp_date) & (option_chain["option_type"] == leg.spec.option_type.upper())
             ]
-            strike = select_strike(snap, leg.spec.option_type.upper(), underlying_price, leg.spec.strike_criteria)
+            strike = select_strike(snap, leg.spec.option_type.upper(), underlying_price, leg.spec.strike_criteria, exchange=self.exchange)
             if strike is None:
                 continue
 
@@ -286,9 +286,9 @@ class UnifiedStrategyEngine:
             return signals
 
         for pen in self.pending_reentries:
-            exp_date = resolve_expiry_keyword(self.current_date, pen.spec.expiry)
+            exp_date = resolve_expiry_keyword(self.current_date, pen.spec.expiry, self.exchange)
             strike = select_strike(
-                option_chain, pen.spec.option_type.upper(), underlying_price, pen.spec.strike_criteria
+                option_chain, pen.spec.option_type.upper(), underlying_price, pen.spec.strike_criteria, exchange=self.exchange
             )
             if strike is not None:
                 # Create new leg

@@ -80,7 +80,7 @@ class TestStrategyComponents(unittest.TestCase):
         # It's not missing. So it should use existing. 
         # HOWEVER, `CLOSEST_DELTA` impl explicitly calls `ensure_delta` which re-returns chain if valid.
         
-        k = select_strike(self.chain, "CE", 100.0, cols)
+        k = select_strike(self.chain, "CE", 100.0, cols, exchange="NSE")
         self.assertEqual(k, 105.0)
 
     def test_greeks_vectorized_broad(self):

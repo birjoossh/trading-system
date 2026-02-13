@@ -25,12 +25,12 @@ def _detect_step(strikes: pd.Series, default: float = 50.0) -> float:
 from unified_trading_platform.trading_core.config.config import settings
 
 # Expiry inference (needed for delta computation)
-def _infer_expiry_dt(chain: pd.DataFrame, params: dict, exchange: str | None = None) -> datetime:
-    exch_name = exchange or settings.get_default_exchange()
+def _infer_expiry_dt(chain: pd.DataFrame, params: dict, exchange: str) -> datetime:
+    """Infer expiry datetime. Exchange must be provided explicitly."""
     
     # helper to get close time
     def _get_close_time():
-        exch_config = settings.get_exchange_config(exch_name)
+        exch_config = settings.get_exchange_config(exchange)
         trading_hours = exch_config.get("trading_hours", {})
         end_time_str = trading_hours.get("end", "15:30") 
         return map(int, end_time_str.split(":"))
@@ -68,7 +68,7 @@ def _infer_expiry_dt(chain: pd.DataFrame, params: dict, exchange: str | None = N
     raise ValueError("expiry_dt not provided and no expiry column found in chain")
 
 
-def select_strike(chain: pd.DataFrame, option_type: str, atm_price: float, criteria: StrikeCriteria) -> float:
+def select_strike(chain: pd.DataFrame, option_type: str, atm_price: float, criteria: StrikeCriteria, exchange: str | None = None) -> float:
     """
     Select a strike from the provided option chain.
 
@@ -219,7 +219,9 @@ def select_strike(chain: pd.DataFrame, option_type: str, atm_price: float, crite
     if mode == "CLOSEST_DELTA":
         # Ensure Delta is available by computing IV/Delta if missing
         try:
-            expiry_dt = _infer_expiry_dt(chain, params)
+            if not exchange:
+                raise ValueError("CLOSEST_DELTA mode requires 'exchange' to be passed to select_strike()")
+            expiry_dt = _infer_expiry_dt(chain, params, exchange)
         except Exception as e:
             raise ValueError(f"CLOSEST_DELTA requires expiry: {e}")
         full = ensure_delta(
