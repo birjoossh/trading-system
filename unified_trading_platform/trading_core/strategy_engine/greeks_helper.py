@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 from dataclasses import dataclass
 from typing import Optional
@@ -47,13 +46,13 @@ def bs_price(S: float, K: float, T: float, r: float, q: float, sigma: float, cp:
     cp = cp.upper()
     if T <= 0.0 or sigma <= 0.0:
         # discounted intrinsic as a conservative fallback
-        if cp == 'C':
+        if cp == "C":
             return max(0.0, S * math.exp(-q * T) - K * math.exp(-r * T))
         else:
             return max(0.0, K * math.exp(-r * T) - S * math.exp(-q * T))
     d1 = (math.log(S / K) + (r - q + 0.5 * sigma * sigma) * T) / (sigma * math.sqrt(T))
     d2 = d1 - sigma * math.sqrt(T)
-    if cp == 'C':
+    if cp == "C":
         return S * math.exp(-q * T) * _norm_cdf(d1) - K * math.exp(-r * T) * _norm_cdf(d2)
     else:
         return K * math.exp(-r * T) * _norm_cdf(-d2) - S * math.exp(-q * T) * _norm_cdf(-d1)
@@ -67,12 +66,12 @@ def bs_delta(S: float, K: float, T: float, r: float, q: float, sigma: float, cp:
     cp = cp.upper()
     if T <= 0.0 or sigma <= 0.0:
         # heuristic intrinsic-limit delta when close to expiry or zero vol
-        if cp == 'C':
+        if cp == "C":
             return 1.0 if S > K else 0.0
         else:
             return -1.0 if S < K else 0.0
     d1 = (math.log(S / K) + (r - q + 0.5 * sigma * sigma) * T) / (sigma * math.sqrt(T))
-    if cp == 'C':
+    if cp == "C":
         return math.exp(-q * T) * _norm_cdf(d1)
     else:
         return -math.exp(-q * T) * _norm_cdf(-d1)
@@ -163,7 +162,7 @@ def compute_iv_delta_for_chain(
     iv_out = []
     delta_out = []
     for _, row in df.iterrows():
-        cp = 'C' if row["option_type"] == 'CE' else 'P'
+        cp = "C" if row["option_type"] == "CE" else "P"
         K = float(row["Strike"])
         P = float(row["Close"])
         if P < min_price:
@@ -196,7 +195,5 @@ def ensure_delta(
     """
     needs = ("Delta" not in chain.columns) or chain["Delta"].isna().mean() > 0.1
     if needs:
-        return compute_iv_delta_for_chain(
-            chain, S, expiry_dt, r=r, q=q, now_dt=now_dt, min_price=min_price
-        )
+        return compute_iv_delta_for_chain(chain, S, expiry_dt, r=r, q=q, now_dt=now_dt, min_price=min_price)
     return chain.copy()

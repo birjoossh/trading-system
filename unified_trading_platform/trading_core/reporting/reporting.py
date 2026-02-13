@@ -1,6 +1,5 @@
 from __future__ import annotations
 import json
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal, Tuple, Dict, List
 import pandas as pd
@@ -8,6 +7,7 @@ import numpy as np
 from utils import ensure_dir
 
 Scope = Literal["package", "leg"]
+
 
 def _as_trades(df: pd.DataFrame, scope: Scope) -> pd.DataFrame:
     """
@@ -17,17 +17,20 @@ def _as_trades(df: pd.DataFrame, scope: Scope) -> pd.DataFrame:
     leg:      each leg is a trade (group by date, leg_id). Best when square_off_mode='Partial'
     """
     if scope == "leg":
-        trades = (df.groupby(["date","leg_id"], as_index=False)["pnl_after_cost"]
-                    .sum()
-                    .rename(columns={"pnl_after_cost":"trade_pnl"}))
+        trades = (
+            df.groupby(["date", "leg_id"], as_index=False)["pnl_after_cost"]
+            .sum()
+            .rename(columns={"pnl_after_cost": "trade_pnl"})
+        )
         # Keep a readable trade key
-        trades["trade_key"] = trades["date"].astype(str) + f"::leg"
+        trades["trade_key"] = trades["date"].astype(str) + "::leg"
     else:
-        trades = (df.groupby("date", as_index=False)["pnl_after_cost"]
-                    .sum()
-                    .rename(columns={"pnl_after_cost":"trade_pnl"}))
+        trades = (
+            df.groupby("date", as_index=False)["pnl_after_cost"].sum().rename(columns={"pnl_after_cost": "trade_pnl"})
+        )
         trades["trade_key"] = trades["date"].astype(str)
     return trades
+
 
 def _equity_and_drawdown(pnls: pd.Series) -> Tuple[pd.Series, pd.Series, float, int, int, int]:
     eq = pnls.cumsum()
@@ -39,9 +42,9 @@ def _equity_and_drawdown(pnls: pd.Series) -> Tuple[pd.Series, pd.Series, float, 
         return eq, dd, 0.0, 0, 0, 0
     end_idx = int(dd.idxmin())
     # start is previous peak
-    start_idx = int((eq.iloc[:end_idx+1]).idxmax())
+    start_idx = int((eq.iloc[: end_idx + 1]).idxmax())
     # recovery: first index after end_idx where dd == 0 (back to peak), else last
-    after = dd.iloc[end_idx+1:]
+    after = dd.iloc[end_idx + 1 :]
     if (after == 0).any():
         rec_idx = int(after[after == 0].index[0])
     else:
@@ -49,27 +52,33 @@ def _equity_and_drawdown(pnls: pd.Series) -> Tuple[pd.Series, pd.Series, float, 
     duration = rec_idx - start_idx + 1
     return eq, dd, max_dd, duration, start_idx, rec_idx
 
+
 def _streaks(x: pd.Series) -> Tuple[int, int]:
     # x is boolean Series (True = win)
     max_win = max_loss = cur_win = cur_loss = 0
     for v in x.tolist():
         if v:
-            cur_win += 1; max_win = max(max_win, cur_win)
+            cur_win += 1
+            max_win = max(max_win, cur_win)
             cur_loss = 0
         else:
-            cur_loss += 1; max_loss = max(max_loss, cur_loss)
+            cur_loss += 1
+            max_loss = max(max_loss, cur_loss)
             cur_win = 0
     return max_win, max_loss
+
 
 def _max_trades_in_drawdown(dd: pd.Series) -> int:
     # longest consecutive segment where dd < 0
     longest = cur = 0
     for v in dd.tolist():
         if v < 0:
-            cur += 1; longest = max(longest, cur)
+            cur += 1
+            longest = max(longest, cur)
         else:
             cur = 0
     return longest
+
 
 def summarize_trades(out_csv: Path, scope: Scope = "package") -> dict:
     """
@@ -112,7 +121,7 @@ def summarize_trades(out_csv: Path, scope: Scope = "package") -> dict:
         "overall_profit": round(overall_profit, 2),
         "num_trades": int(n),
         "avg_profit_per_trade": round(avg_per_trade, 2),
-        "avg_loss_on_losers": round(avg_loss, 2),         # keep the negative sign
+        "avg_loss_on_losers": round(avg_loss, 2),  # keep the negative sign
         "avg_profit_on_winners": round(avg_win, 2),
         "max_profit_single_trade": round(max_profit, 2),
         "max_loss_single_trade": round(max_loss, 2),
@@ -130,13 +139,15 @@ def summarize_trades(out_csv: Path, scope: Scope = "package") -> dict:
     }
 
     # write sidecar files
-    eq = pd.DataFrame({
-        "trade_idx": np.arange(len(trades)),
-        "trade_key": trades["trade_key"],
-        "trade_pnl": trades["trade_pnl"],
-        "equity": equity,
-        "drawdown": dd,
-    })
+    eq = pd.DataFrame(
+        {
+            "trade_idx": np.arange(len(trades)),
+            "trade_key": trades["trade_key"],
+            "trade_pnl": trades["trade_pnl"],
+            "equity": equity,
+            "drawdown": dd,
+        }
+    )
     eq_path = out_csv.with_name(out_csv.stem + ".__equity.csv")
     eq.to_csv(eq_path, index=False)
 
@@ -162,7 +173,10 @@ def flush_results(rows: List[Dict], out_csv: Path, square_off_mode: str) -> Dict
 
     # Per-day accumulation (compat with existing summary output)
     s = (
-        out.groupby("date")["pnl_after_cost"].sum().rename("day_pnl").to_frame()
+        out.groupby("date")["pnl_after_cost"]
+        .sum()
+        .rename("day_pnl")
+        .to_frame()
         .assign(cum_pnl=lambda d: d["day_pnl"].cumsum())
     )
     s.loc["TOTAL"] = [out["pnl_after_cost"].sum(), np.nan]

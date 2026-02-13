@@ -13,16 +13,10 @@ class StrategyInitializeRequest(BaseModel):
 
     venue: str = Field(..., description="Broker venue name")
     strategy_name: str = Field(..., description="Strategy configuration name")
-    start_date: Optional[str] = Field(
-        default=None, description="Start date for backtesting (YYYY-MM-DD)"
-    )
-    end_date: Optional[str] = Field(
-        default=None, description="End date for backtesting (YYYY-MM-DD)"
-    )
+    start_date: Optional[str] = Field(default=None, description="Start date for backtesting (YYYY-MM-DD)")
+    end_date: Optional[str] = Field(default=None, description="End date for backtesting (YYYY-MM-DD)")
     db_path: str = Field(
-        default_factory=lambda: get_config_value(
-            "strategy.default_db_path", "trading_system.db"
-        ),
+        default_factory=lambda: get_config_value("strategy.default_db_path", "trading_system.db"),
         description="Database path",
     )
 
@@ -46,25 +40,11 @@ class StrategyStatusResponse(BaseModel):
 class PortfolioSummaryResponse(BaseModel):
     """Portfolio summary response"""
 
-    total_pnl: float = Field(
-        default_factory=lambda: get_config_value("portfolio.default_total_pnl", 0.0)
-    )
-    open_positions: int = Field(
-        default_factory=lambda: get_config_value("portfolio.default_open_positions", 0)
-    )
-    closed_positions: int = Field(
-        default_factory=lambda: get_config_value(
-            "portfolio.default_closed_positions", 0
-        )
-    )
-    total_positions: int = Field(
-        default_factory=lambda: get_config_value("portfolio.default_total_positions", 0)
-    )
-    pending_reentries: int = Field(
-        default_factory=lambda: get_config_value(
-            "portfolio.default_pending_reentries", 0
-        )
-    )
+    total_pnl: float = Field(default_factory=lambda: get_config_value("portfolio.default_total_pnl", 0.0))
+    open_positions: int = Field(default_factory=lambda: get_config_value("portfolio.default_open_positions", 0))
+    closed_positions: int = Field(default_factory=lambda: get_config_value("portfolio.default_closed_positions", 0))
+    total_positions: int = Field(default_factory=lambda: get_config_value("portfolio.default_total_positions", 0))
+    pending_reentries: int = Field(default_factory=lambda: get_config_value("portfolio.default_pending_reentries", 0))
     positions: Optional[List[Dict[str, Any]]] = None
     cash_balance: Optional[float] = None
     total_value: Optional[float] = None

@@ -11,14 +11,205 @@ A comprehensive, modular Python trading system designed to work with Interactive
 - **Multi-Broker Support**: Modular architecture allows easy addition of new brokers
 - **Data Persistence**: SQLite database for caching data and storing order/trade history
 - **Account Management**: Access account information and positions across brokers
-![](sequence.png)
+### Sequence Diagram
+```mermaid
+sequenceDiagram
+    participant User
+    participant TradingSystem
+    participant EventEngine
+    participant BrokerFactory
+    participant IBBroker
+    
+    User->>TradingSystem: add_broker("ib", host="127.0.0.1")
+    TradingSystem->>BrokerFactory: create_broker("ib", config)
+    BrokerFactory-->>TradingSystem: IBBroker instance
+    TradingSystem->>IBBroker: connect()
+    IBBroker-->>TradingSystem: Connection Successful
+    
+    User->>TradingSystem: subscribe_market_data("AAPL")
+    TradingSystem->>IBBroker: subscribe_market_data(contract)
+    IBBroker-->>TradingSystem: reqId
+    
+    loop Market Data Stream
+        IBBroker->>EventEngine: put(tick_event)
+        EventEngine->>TradingSystem: process(tick_event)
+        TradingSystem->>User: callback(tick_data)
+    end
+```
 
 ### Architecture
-![](arch.png)
+```mermaid
+graph TD
+    User[User / Strategy] -->|Submit Order| OM[OrderManager]
+    User -->|Subscribe Data| DM[DataManager]
+    
+    OM -->|Route Order| BF[BrokerFactory]
+    DM -->|Request Data| BF
+    DM -->|Subsribe| EE[EventEngine]
+    
+    BF -->|Create| IB[IBBroker]
+    
+    subgraph "Interactive Brokers Integration"
+        IB -->|Async Request| IBC[IBClient]
+        IBC -->|Map Request| RM[IBRequestManager]
+        RM -->|Return Future| IBC
+        IBC -->|Send to API| TWS[IB TWS/Gateway]
+        TWS -->|Callback| IBC
+        IBC -->|Resolve Future| RM
+        RM -->|Result| IB
+    end
+    
+    IB -->|Order Updates| OM
+    IB -->|Market Data| EE
+    EE -->|Async Event| DM
+```
+
 - **Broker Abstraction Layer**: Unified interface for different brokers
 - **Factory Pattern**: Easy instantiation and management of broker connections
 - **Event-Driven**: Callback system for order updates and market data
 - **Modular Design**: Clean separation of concerns for easy maintenance and extension
+
+### System Class Diagram
+
+```mermaid
+classDiagram
+    class TradingSystem {
+        +add_broker(name, type)
+        +submit_order(order)
+        +get_historical_data(contract)
+        +subscribe_market_data(contract)
+    }
+
+    class BrokerFactory {
+        +register_broker(type, class)
+        +create_broker(type, config) BrokerInterface
+    }
+
+    class BrokerInterface {
+        <<interface>>
+        +connect()
+        +disconnect()
+        +submit_order(order)
+        +get_historical_data(contract)
+        +subscribe_market_data(contract)
+    }
+
+    class IBBroker {
+        -client: IBClient
+        -request_manager: IBRequestManager
+        +connect()
+        +submit_order(order)
+    }
+
+    class IBClient {
+        +reqContractDetails()
+        +reqHistoricalData()
+        +reqMktData()
+        +get_contract_details_async()
+    }
+    
+    class IBRequestManager {
+        +create_request() (reqId, Future)
+        +set_result(reqId, result)
+        +set_error(reqId, error)
+    }
+
+    class PaperBroker {
+        +connect()
+        +submit_order(order)
+    }
+
+    class DataManager {
+        -cache: MemoryCache
+        -db: SQLiteDB
+        +get_historical_data()
+        +save_tick_data()
+    }
+
+    class OrderManager {
+        -orders: Dict
+        +submit_order(order)
+        +on_order_status(status)
+    }
+
+    class StrategyManager {
+        +register_strategy(strategy)
+        +start()
+        +stop()
+    }
+    
+    class StrategyEngine {
+        +run_backtest()
+        +simulate_market()
+    }
+
+    class EventEngine {
+        +put(event)
+        +start()
+        +stop()
+        +register(type, handler)
+    }
+
+    TradingSystem --> BrokerFactory
+    TradingSystem --> DataManager
+    TradingSystem --> OrderManager
+    TradingSystem --> EventEngine
+    
+    BrokerFactory ..> BrokerInterface : Creates
+    IBBroker --|> BrokerInterface
+    PaperBroker --|> BrokerInterface
+    
+    IBBroker --> IBClient
+    IBClient --> IBRequestManager
+    
+    StrategyManager --> TradingSystem : Uses
+    StrategyManager --> StrategyEngine : Uses (Backtest)
+    
+    EventEngine ..> DataManager : Async Updates
+```
+
+## Interactive Brokers Implementation Detail
+
+The IB integration uses a **Request Manager** pattern to bridge the asynchronous, callback-based `ibapi` with the synchronous/async-await style of the trading core.
+
+### The Request Flow
+
+1.  **Request Initiation**: `IBBroker` calls an async method on `IBClient` (e.g., `get_contract_details_async`).
+2.  **Future Creation**: `IBClient` asks `IBRequestManager` for a new `reqId`. The manager creates a Python `Future` and maps it to the ID.
+3.  **API Call**: `IBClient` sends the request to TWS using the `reqId`.
+4.  **Accumulation**: As callbacks arrive (e.g., `contractDetails`), `IBClient` accumulates data in a temporary buffer.
+5.  **Completion**: When the "End" callback arrives (e.g., `contractDetailsEnd`), `IBClient` retrieves the `Future` from `IBRequestManager` and sets the result.
+6.  **Response**: The `Future` resolves, and `IBBroker` receives the data.
+
+```mermaid
+sequenceDiagram
+    participant Broker as IBBroker
+    participant Client as IBClient
+    participant Manager as RequestManager
+    participant TWS as IB TWS
+
+    Broker->>Client: get_contract_details_async(contract)
+    Client->>Manager: create_request()
+    Manager-->>Client: reqId, Future
+    Client->>TWS: reqContractDetails(reqId, contract)
+    Client-->>Broker: return Future
+    
+    TWS->>Client: contractDetails(reqId, data)
+    Client->>Client: Accumulate data
+    
+    TWS->>Client: contractDetailsEnd(reqId)
+    Client->>Manager: set_result(reqId, accumulated_data)
+    Manager-->>Broker: Future Resolves
+```
+
+## Detailed Configuration
+
+Configuration is managed via `config.yaml`, creating a single source of truth for:
+-   **Broker Settings**: Host, port, client IDs.
+-   **System Paths**: Data directories, log paths.
+-   **Trading defaults**: Risk limits, default quantities.
+
+The system uses `pydantic-settings` to load this configuration and allow environment variable overrides (e.g., `TRADING_SYSTEM_BROKERS__INTERACTIVE_BROKERS__HOST=192.168.1.5`).
 
 ### Key Components
 **BrokerInterface**: Abstract base class that defines the interface all brokers must implement. This ensures consistency across different broker implementations.
@@ -66,17 +257,15 @@ pip install pandas sqlite3 ibapi
 pip install -e .
 ```
 
-3. **Configure settings** in `config.json`:
-```json
-{
-  "brokers": {
-    "interactive_brokers": {
-      "host": "127.0.0.1",
-      "port": 7497,
-      "client_id": 1
-    }
-  }
-}
+3. **Configure settings** in `config.yaml`:
+```yaml
+brokers:
+  interactive_brokers:
+    host: "127.0.0.1"
+    port: 7497
+    client_id: 1
+system:
+  log_level: "INFO"
 ```
 
 ## Quick Start
@@ -84,13 +273,13 @@ pip install -e .
 ### Basic Usage Example
 
 ```python
-from trading_core.main import TradingSystem
+from unified_trading_platform.trading_core.trading_system import TradingSystem
 
 # Initialize the system
 trading_system = TradingSystem()
 
 # Add Interactive Brokers
-trading_core.add_broker(
+trading_system.add_broker(
     name="ib_paper",
     broker_type="ib",
     host="127.0.0.1",
@@ -99,17 +288,17 @@ trading_core.add_broker(
 )
 
 # Get historical data
-hist_data = trading_core.get_historical_data(
-    symbol="AAPL",
-    exchange="SMART",
+hist_data = trading_system.data_manager.get_historical_data(
+    contract=Contract(symbol="AAPL", secType="STK", exchange="SMART", currency="USD"),
     duration="5 D",
-    bar_size="1 hour"
+    bar_size="1 hour",
+    what_to_show="TRADES"
 )
 
 print(hist_data.head())
 
 # Submit a limit order
-order_id = trading_core.submit_limit_order(
+order_id = trading_system.submit_limit_order(
     symbol="AAPL",
     exchange="SMART", 
     action="BUY",
@@ -119,23 +308,23 @@ order_id = trading_core.submit_limit_order(
 )
 
 # Check order status
-status = trading_core.get_order_status(order_id)
+status = trading_system.get_order_status(order_id)
 print(f"Order status: {status}")
 
 # Clean shutdown
-trading_core.shutdown()
+trading_system.shutdown()
 ```
 
 ### Running the Examples
 
 **Basic functionality example**:
 ```bash
-python example_usage.py
+python examples/example_ib.py
 ```
 
-**Simple trading strategy**:
+**Strategy backtesting**:
 ```bash
-python strategy_example.py
+python examples/example_strategy_manager.py
 ```
 
 ## API Reference
@@ -176,10 +365,11 @@ The main interface for the trading system.
 
 ```python
 from trading_core.brokers.base_broker import Contract
+from trading_core.data_models.security_type_enum import SecurityType
 
 contract = Contract(
     symbol="AAPL",           # Symbol
-    security_type="STK",     # STK, CASH, FUT, OPT, etc.
+    security_type=SecurityType.STOCK,     # STK, CASH, FUT, OPT, etc.
     exchange="NASDAQ",       # Exchange
     currency="USD",          # Currency
     expiry="20231215",       # For futures/options
@@ -207,28 +397,29 @@ order = Order(
 
 ### Directory Structure
 ```
-trading_system/
-__init__.py
-main.py                 # Main TradingSystem class
-brokers/
-   __init__.py
-   base_broker.py      # Abstract broker interface
-   broker_factory.py   # Broker factory
-   interactive_brokers/
-       __init__.py
-       ib_broker.py    # IB implementation
-data/
-  __init__.py
-  data_manager.py     # Data management
-orders/
-   __init__.py
-   order_manager.py    # Order management
-strategies/
-  __init__.py
-
-config/
-   __init__.py
-   config.py           # Configuration management
+unified_trading_platform/
+    __init__.py
+    api/                    # API Endpoints & Runtime
+    docs/                   # Documentation
+    examples/               # Usage Examples
+    trading_core/
+        __init__.py
+        trading_system.py   # Main TradingSystem class
+        event_system.py     # Event Engine
+        brokers/
+           __init__.py
+           base_broker.py
+           broker_factory.py
+           interactive_brokers/
+        data/
+           __init__.py
+           data_manager.py
+        orders/
+           __init__.py
+           order_manager.py
+        strategies/         # Strategy implementations
+        strategy_engine/    # Core Strategy Logic
+        data_models/        # Pydantic Models
 ```
 
 ## Adding New Brokers
@@ -261,7 +452,7 @@ BrokerFactory.register_broker('alpaca', AlpacaBroker)
 
 3. **Use the new broker**:
 ```python
-trading_core.add_broker(
+trading_system.add_broker(
     name="alpaca_live",
     broker_type="alpaca",
     api_key="your_key",

@@ -13,16 +13,12 @@ class BaseOrderRequest(BaseModel):
     """Base order request with common fields"""
 
     symbol: str = Field(..., description="Trading symbol", examples=["AAPL", "SPY"])
-    exchange: str = Field(
-        ..., description="Exchange identifier", examples=["SMART", "NYSE"]
-    )
+    exchange: str = Field(..., description="Exchange identifier", examples=["SMART", "NYSE"])
     action: str = Field(..., description="BUY or SELL", examples=["BUY", "SELL"])
     quantity: int = Field(..., gt=0, description="Order quantity", examples=[100, 1000])
     broker_name: str = Field(..., description="Broker to use", examples=["ib_paper"])
     security_type: str = Field(
-        default_factory=lambda: get_config_value(
-            "contract.default_security_type", "STK"
-        ),
+        default_factory=lambda: get_config_value("contract.default_security_type", "STK"),
         description="Security type",
         examples=["STK", "OPT"],
     )
@@ -31,30 +27,21 @@ class BaseOrderRequest(BaseModel):
         description="Currency code",
         examples=["USD"],
     )
-    account: Optional[str] = Field(
-        default=None, description="Account ID", examples=[None, "DU123456"]
-    )
+    account: Optional[str] = Field(default=None, description="Account ID", examples=[None, "DU123456"])
     time_in_force: str = Field(
-        default_factory=lambda: get_config_value(
-            "contract.default_time_in_force", "DAY"
-        ),
+        default_factory=lambda: get_config_value("contract.default_time_in_force", "DAY"),
         description="DAY, GTC, IOC, FOK, etc.",
         examples=["DAY", "GTC", "IOC", "FOK"],
     )
     order_type: str = Field(
-        default_factory=lambda: get_config_value(
-            "contract.default_order_type", "MARKET"
-        ),
+        default_factory=lambda: get_config_value("contract.default_order_type", "MARKET"),
         description="Order type",
         examples=["MARKET", "LIMIT", "STOP", "STOP_LIMIT"],
     )
-    limit_price: Optional[float] = Field(
-        default=None, description="Limit price", examples=[None, 150.00]
-    )
-    account: Optional[str] = Field(
-        default=None, description="Account ID", examples=[None, "DU123456"]
-    )
-    
+    limit_price: Optional[float] = Field(default=None, description="Limit price", examples=[None, 150.00])
+    account: Optional[str] = Field(default=None, description="Account ID", examples=[None, "DU123456"])
+
+
 class MarketOrderRequest(BaseOrderRequest):
     """Market order request"""
 
@@ -97,9 +84,7 @@ class LimitOrderRequest(BaseOrderRequest):
         }
     )
 
-    limit_price: float = Field(
-        ..., gt=0, description="Limit price", examples=[150.00, 450.50]
-    )
+    limit_price: float = Field(..., gt=0, description="Limit price", examples=[150.00, 450.50])
 
 
 class StopOrderRequest(BaseOrderRequest):
@@ -122,9 +107,7 @@ class StopOrderRequest(BaseOrderRequest):
         }
     )
 
-    stop_price: float = Field(
-        ..., gt=0, description="Stop price", examples=[145.00, 440.00]
-    )
+    stop_price: float = Field(..., gt=0, description="Stop price", examples=[145.00, 440.00])
 
 
 class StopLimitOrderRequest(BaseOrderRequest):
@@ -150,10 +133,9 @@ class OrderResponse(BaseModel):
 
     order_id: str = Field(..., description="Internal order identifier")
     broker_order_id: Optional[str] = Field(None, description="Broker-assigned order ID")
-    status: str = Field(
-        ..., description="Order status", examples=["submitted", "pending", "filled"]
-    )
+    status: str = Field(..., description="Order status", examples=["submitted", "pending", "filled"])
     message: Optional[str] = Field(None, description="Optional status message")
+
 
 """
  return [
@@ -175,6 +157,7 @@ class OrderResponse(BaseModel):
         ]
 
 """
+
 
 class OrderInfo(BaseModel):
     """Order information"""

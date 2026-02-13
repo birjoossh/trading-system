@@ -96,17 +96,9 @@ class AccountInfo(BaseModel):
 
     broker_name: str = Field(..., description="Name of the broker")
     account_id: Optional[str] = Field(None, description="Account identifier")
-    cash_balance: Optional[float] = Field(
-        None, description="Cash balance in the account"
-    )
+    cash_balance: Optional[float] = Field(None, description="Cash balance in the account")
     buying_power: Optional[float] = Field(None, description="Buying power available")
-    total_value: Optional[float] = Field(
-        None, description="Total account value including positions"
-    )
+    total_value: Optional[float] = Field(None, description="Total account value including positions")
     equity: Optional[float] = Field(None, description="Account equity")
-    margin_available: Optional[float] = Field(
-        None, description="Available margin for trading"
-    )
-    info: Optional[Dict[str, Any]] = Field(
-        None, description="Additional account details"
-    )
+    margin_available: Optional[float] = Field(None, description="Available margin for trading")
+    info: Optional[Dict[str, Any]] = Field(None, description="Additional account details")

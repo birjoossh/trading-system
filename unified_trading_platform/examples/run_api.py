@@ -12,7 +12,6 @@ from pathlib import Path
 project_root = Path(__file__).parent
 sys.path.insert(0, str(project_root))
 
-from unified_trading_platform.api.main import app
 
 def main():
     """Main entry point for running the API"""
@@ -50,7 +49,7 @@ def main():
 
     args = parser.parse_args()
 
-    print(f"Starting Unified Trading Platform API...")
+    print("Starting Unified Trading Platform API...")
     print(f"Host: {args.host}")
     print(f"Port: {args.port}")
     print(f"Docs: http://{args.host}:{args.port}/docs")
@@ -67,6 +66,7 @@ def main():
         workers=args.workers if not args.reload else 1,
         log_level=args.log_level,
     )
+
 
 if __name__ == "__main__":
     main()

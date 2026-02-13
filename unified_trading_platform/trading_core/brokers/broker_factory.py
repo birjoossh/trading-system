@@ -3,13 +3,13 @@ Broker factory for creating broker instances.
 Supports multiple brokers through a unified interface.
 """
 
-import logging
 from typing import Dict, Type
 from unified_trading_platform.trading_core.brokers.base_broker import BrokerInterface
 from unified_trading_platform.trading_core.utils import get_logger
 
 # Initialize logger
 logger = get_logger(__name__)
+
 
 class BrokerFactory:
     """Factory for creating broker instances"""
@@ -26,7 +26,7 @@ class BrokerFactory:
         """Create a broker instance"""
         logger.debug(f"Available brokers: {list(cls._brokers)}, requested: {name}")
         if name not in cls._brokers:
-            available = ', '.join(cls._brokers.keys())
+            available = ", ".join(cls._brokers.keys())
             error_msg = f"Broker '{name}' not found. Available: {available}"
             logger.error(error_msg)
             raise ValueError(error_msg)
@@ -40,14 +40,16 @@ class BrokerFactory:
         """List available brokers"""
         return list(cls._brokers.keys())
 
+
 # Register Interactive Brokers
-try:
-    from .interactive_brokers.ib_broker import IBBroker
-    logger.info("Registering Interactive Brokers ...")
-    BrokerFactory.register_broker('ib', IBBroker)
-    BrokerFactory.register_broker('interactive_brokers', IBBroker)
-except ImportError:
-    logger.warning("Interactive Brokers not available")
+# try:
+from unified_trading_platform.trading_core.brokers.interactive_brokers.ib_broker import IBBroker
+
+logger.info("Registering Interactive Brokers ...")
+BrokerFactory.register_broker("ib", IBBroker)
+BrokerFactory.register_broker("interactive_brokers", IBBroker)
+# except ImportError:
+#     logger.warning("Interactive Brokers not available")
 
 # TODO: Add other brokers here
 # BrokerFactory.register_broker('alpaca', AlpacaBroker)
@@ -56,8 +58,9 @@ except ImportError:
 
 # Register Paper broker
 try:
-    from .paper_broker.paper_broker import PaperBroker
+    from unified_trading_platform.trading_core.brokers.paper_broker import PaperBroker
+
     logger.info("Registering Paper broker ...")
-    BrokerFactory.register_broker('paper', PaperBroker)
+    BrokerFactory.register_broker("paper", PaperBroker)
 except ImportError:
     logger.warning("Paper broker not available")
