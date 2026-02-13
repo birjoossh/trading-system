@@ -11,10 +11,55 @@ A comprehensive, modular Python trading system designed to work with Interactive
 - **Multi-Broker Support**: Modular architecture allows easy addition of new brokers
 - **Data Persistence**: SQLite database for caching data and storing order/trade history
 - **Account Management**: Access account information and positions across brokers
-![](sequence.png)
+### Sequence Diagram
+```mermaid
+sequenceDiagram
+    participant User
+    participant TradingSystem
+    participant BrokerFactory
+    participant IBBroker
+    
+    User->>TradingSystem: add_broker("ib", host="127.0.0.1")
+    TradingSystem->>BrokerFactory: create_broker("ib", config)
+    BrokerFactory-->>TradingSystem: IBBroker instance
+    TradingSystem->>IBBroker: connect()
+    IBBroker-->>TradingSystem: Connection Successful
+    
+    User->>TradingSystem: subscribe_market_data("AAPL")
+    TradingSystem->>IBBroker: subscribe_market_data(contract)
+    IBBroker-->>TradingSystem: reqId
+    
+    loop Market Data Stream
+        IBBroker->>TradingSystem: callback(tick_data)
+        TradingSystem->>User: callback(tick_data)
+    end
+```
 
 ### Architecture
-![](arch.png)
+```mermaid
+graph TD
+    User[User / Strategy] -->|Submit Order| OM[OrderManager]
+    User -->|Subscribe Data| DM[DataManager]
+    
+    OM -->|Route Order| BF[BrokerFactory]
+    DM -->|Request Data| BF
+    
+    BF -->|Create| IB[IBBroker]
+    
+    subgraph "Interactive Brokers Integration"
+        IB -->|Async Request| IBC[IBClient]
+        IBC -->|Map Request| RM[IBRequestManager]
+        RM -->|Return Future| IBC
+        IBC -->|Send to API| TWS[IB TWS/Gateway]
+        TWS -->|Callback| IBC
+        IBC -->|Resolve Future| RM
+        RM -->|Result| IB
+    end
+    
+    IB -->|Order Updates| OM
+    IB -->|Market Data| DM
+```
+
 - **Broker Abstraction Layer**: Unified interface for different brokers
 - **Factory Pattern**: Easy instantiation and management of broker connections
 - **Event-Driven**: Callback system for order updates and market data
@@ -66,17 +111,15 @@ pip install pandas sqlite3 ibapi
 pip install -e .
 ```
 
-3. **Configure settings** in `config.json`:
-```json
-{
-  "brokers": {
-    "interactive_brokers": {
-      "host": "127.0.0.1",
-      "port": 7497,
-      "client_id": 1
-    }
-  }
-}
+3. **Configure settings** in `config.yaml`:
+```yaml
+brokers:
+  interactive_brokers:
+    host: "127.0.0.1"
+    port: 7497
+    client_id: 1
+system:
+  log_level: "INFO"
 ```
 
 ## Quick Start
@@ -130,12 +173,12 @@ trading_core.shutdown()
 
 **Basic functionality example**:
 ```bash
-python example_usage.py
+python examples/example_ib.py
 ```
 
-**Simple trading strategy**:
+**Strategy backtesting**:
 ```bash
-python strategy_example.py
+python examples/example_strategy_manager.py
 ```
 
 ## API Reference

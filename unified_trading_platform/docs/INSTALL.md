@@ -31,7 +31,7 @@ pip install -e .
 ### Step 3: Test Connection
 Run the example:
 ```bash
-python example_usage.py
+python examples/example_ib.py
 ```
 
 ## Troubleshooting
