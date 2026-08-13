@@ -4,6 +4,8 @@ from typing import Dict, List, Optional
 import json
 from pathlib import Path
 
+from unified_trading_platform.trading_core.config.config import settings
+
 
 # ---------------------------
 # Strike selection spec
@@ -89,6 +91,15 @@ class LegSpec:
     rbo_range_validator_mode: str = "pts"
 
 
+def default_costs() -> Dict:
+    """Platform-wide execution costs from config.yaml (`backtest.costs`)."""
+    configured = settings.get("backtest.costs", {}) or {}
+    return {
+        "per_lot_roundtrip": float(configured.get("per_lot_roundtrip", 0.0)),
+        "slippage_per_fill": float(configured.get("slippage_per_fill", 0.0)),
+    }
+
+
 @dc.dataclass
 class TrailToBE:
     enabled: bool = False
@@ -109,8 +120,11 @@ class StrategyConfig:
     lot_size: int = 50
     symbol: str = ""
     currency: str = ""
+    # IB-style contract id for the underlying, when the broker needs one.
+    underlying_con_id: int = 0
+    underlying_security_type: str = "STK"
     legs: List[LegSpec] = dc.field(default_factory=list)
-    costs: Dict = dc.field(default_factory=lambda: {"per_lot_roundtrip": 0.0, "slippage_per_fill": 0.0})
+    costs: Dict = dc.field(default_factory=lambda: dict(default_costs()))
 
     def __post_init__(self):
         if not self.symbol:
@@ -238,6 +252,10 @@ def load_strategy_config(strategy_name: str, strategies_dir: str = None) -> Stra
         lot_size=config_dict.get("lot_size", 50),
         symbol=config_dict["symbol"],
         currency=config_dict["currency"],
+        underlying_con_id=int(config_dict.get("underlying_con_id", 0)),
+        underlying_security_type=config_dict.get("underlying_security_type", "STK"),
         legs=legs,
-        costs=config_dict.get("costs", {"per_lot_roundtrip": 0.0, "slippage_per_fill": 0.0}),
+        # A strategy may override either cost, or neither; anything it omits
+        # falls back to the platform default in config.yaml.
+        costs={**default_costs(), **(config_dict.get("costs") or {})},
     )

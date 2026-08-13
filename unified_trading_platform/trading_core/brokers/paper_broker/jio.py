@@ -21,22 +21,54 @@ def to_pandas_freq(bar_size: str) -> str:
     return s
 
 
+def resolve_h5_paths(h5_path) -> list:
+    """Normalize an H5 location into a sorted list of files.
+
+    Accepts a single file, a directory of ``*.h5`` files, or an explicit
+    sequence of files — which is how a backtest spans more than one session.
+    """
+    if h5_path is None:
+        raise FileNotFoundError("no H5 path given")
+
+    candidates = h5_path if isinstance(h5_path, (list, tuple, set)) else [h5_path]
+
+    paths = []
+    for candidate in candidates:
+        path = Path(candidate)
+        if path.is_dir():
+            found = sorted(path.glob("*.h5"))
+            if not found:
+                raise FileNotFoundError(f"no .h5 files in {path}")
+            paths.extend(found)
+        elif path.exists():
+            paths.append(path)
+        else:
+            raise FileNotFoundError(path)
+
+    # Sort by name so daily files replay in chronological order.
+    return sorted(set(paths))
+
+
 class JioH5Adapter:
-    # Reads daily .h5 with '/tick_data' and exposes:
+    # Reads one or more daily .h5 files with '/tick_data' and exposes:
     # spot_series(), futures_series(), options_table().
 
-    def __init__(self, h5_path: Path, exchange: str):
+    def __init__(self, h5_path, exchange: str):
         self.exchange = exchange
-        if not h5_path.exists():
-            raise FileNotFoundError(h5_path)
-        self.h5_path = h5_path
-        with pd.HDFStore(h5_path, mode="r") as store:
+        self.h5_paths = resolve_h5_paths(h5_path)
+        #: Kept for backwards compatibility with single-file callers.
+        self.h5_path = self.h5_paths[0]
+        with pd.HDFStore(self.h5_paths[0], mode="r") as store:
             self.keys = list(store.keys())
 
     def _read_tick(self) -> pd.DataFrame:
-        with pd.HDFStore(self.h5_path, mode="r") as store:
-            key = "/tick_data" if "/tick_data" in self.keys else "tick_data"
-            df = store[key]
+        frames = []
+        for path in self.h5_paths:
+            with pd.HDFStore(path, mode="r") as store:
+                keys = list(store.keys())
+                key = "/tick_data" if "/tick_data" in keys else "tick_data"
+                frames.append(store[key])
+        df = pd.concat(frames, ignore_index=True) if len(frames) > 1 else frames[0]
         df = df.copy()
         df.columns = [str(c).strip() for c in df.columns]
 

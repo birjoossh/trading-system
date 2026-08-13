@@ -8,6 +8,14 @@ from unified_trading_platform.trading_core.utils.logger import get_logger
 logger = get_logger(__name__)
 
 
+def ib_timeout(key: str, fallback: float) -> float:
+    """Per-request TWS timeout from config.yaml (`brokers.interactive_brokers.timeouts.*`)."""
+    from unified_trading_platform.trading_core.config.config import settings
+
+    value = settings.get(f"brokers.interactive_brokers.timeouts.{key}")
+    return float(fallback if value is None else value)
+
+
 class CommonMixin:
     def __init__(self):
         pass

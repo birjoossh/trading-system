@@ -94,7 +94,30 @@ class Config:
             },
             "database": {"path": "trading_system.db", "type": "sqlite"},
             "logging": {"level": "INFO", "file": "trading_system.log", "console": True},
-            "system": {"max_concurrent_orders": 100, "order_timeout": 30, "data_cache_ttl": 300},
+            "system": {
+                "max_concurrent_orders": 100,
+                "order_timeout": 30,
+                "data_cache_ttl": 300,
+                "event_queue_poll_s": 1.0,
+                "shutdown_timeout_s": 5.0,
+            },
+            "pricing": {
+                "risk_free_rate": 0.06,
+                "dividend_yield": 0.0,
+                "min_option_price": 0.01,
+                "implied_vol": {
+                    "lower_bound": 1e-6,
+                    "upper_bound": 5.0,
+                    "tolerance": 1e-6,
+                    "max_iterations": 100,
+                },
+            },
+            "backtest": {
+                "bar_size": "1min",
+                "default_duration_days": 30,
+                "max_reentries_cap": 20,
+                "costs": {"per_lot_roundtrip": 0.0, "slippage_per_fill": 0.0},
+            },
             "api": {"title": "Unified Trading Platform API", "version": "0.1.0"},
             "defaults": {
                 "contract": {"security_type": "STK", "currency": "USD"},

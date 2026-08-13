@@ -74,9 +74,27 @@ See `docs/strategy_engine.md` for the file-by-file breakdown; summary:
 
 ### Configuration
 
-`config.yaml` at the repo root is the single source of truth, loaded by `trading_core/config/config.py` into a module-level `settings` singleton (`Config` class, dot-path `get`/`set`). Env var overrides use the `TRADING_CONFIG__SECTION__KEY` prefix (double underscore = path separator). The API layer reads the same `settings` object directly — `api/main.py` pulls FastAPI metadata from the `api.*` section, and `api/models/*` pull request-model defaults from `defaults.*` / `brokers.*`. Config sections: `system`, `exchanges` (per-exchange trading hours, currency, expiry-weekday rules — see `docs/exchange_config.md`), `logging`, `database`, `brokers`, `api`, `defaults`.
+`config.yaml` at the repo root is the single source of truth, loaded by `trading_core/config/config.py` into a module-level `settings` singleton (`Config` class, dot-path `get`/`set`). Env var overrides use the `TRADING_CONFIG__SECTION__KEY` prefix (double underscore = path separator). The API layer reads the same `settings` object directly — `api/main.py` pulls FastAPI metadata from the `api.*` section, and `api/models/*` pull request-model defaults from `defaults.*` / `brokers.*`.
+
+Sections: `system` (limits, thread poll/shutdown timeouts), `exchanges` (per-exchange trading hours, currency, expiry-weekday rules — see `docs/exchange_config.md`), `logging`, `database`, `brokers` (connection details, per-request IB timeouts, paper-broker fill behaviour), `pricing` (risk-free rate, dividend yield, minimum tradeable premium, IV solver bounds), `backtest` (replay bar size, duration fallback, re-entry ceiling, default execution costs), `api`, `defaults`.
+
+**No tunable number belongs in the code.** Rates, timeouts, strike steps, cost assumptions and fill latencies are all read from `settings` at the point of use, via small module-level accessors (`greeks_helper.risk_free_rate()`, `strikes.default_strike_step()`, `common.ib_timeout()`, `paper_broker._paper_default()`). The literal passed to those accessors is a last-resort fallback for a missing key, not a place to change behaviour. `tests/test_config_driven_behaviour.py` asserts every key the code reads exists in `config.yaml` and that changing it actually changes behaviour, so re-hardcoding a value fails the suite.
 
 `TradingSystem.__init__` calls `_validate_config()` and raises `ValueError` at startup if `system.default_exchange` isn't set or has no matching entry under `exchanges`. Keep `config.yaml`'s `exchanges` section and `system.default_exchange` in sync when editing either.
+
+Config layout is known to be uneven (e.g. execution costs appear both under `backtest.costs` and per-strategy JSON; `defaults.*` mixes wire defaults with domain ones) — normalizing it is planned separate work.
+
+### Instrument facts vs. platform settings
+
+Anything specific to an instrument lives in the strategy JSON, not in config.yaml and not in code: `symbol`, `currency`, `lot_size`, `underlying_con_id` (broker contract id, `0` when unused), `underlying_security_type`, and per-strategy `costs` which override `backtest.costs`. `StrategyManager._create_underlying_contract()` builds the underlying from these fields.
+
+### Backtest sessions
+
+A run may span several trading days. `StrategyManager._process_historical_data` watches the tick date and calls `UnifiedStrategyEngine.start_new_session(date)` when it changes: traded legs are archived into `completed_legs`, un-entered scaffolding is discarded, pending re-entries are cleared, and fresh legs are built against the new day's expiry. `get_all_positions()` and `get_portfolio_summary()` report across every session; `get_current_positions()` stays scoped to open legs. Leg ids are allocated from a run-wide counter so they never repeat between sessions. Point `h5_path` at a single file, a list, or a directory of `*.h5` (see `jio.resolve_h5_paths`).
+
+### Fills and cost modelling
+
+`OrderSignal` carries the `price` and `underlying_price` the engine acted on. The paper broker fills against that reference (`_fill_price`), so market orders no longer fill at zero, and `update_position_on_fill` reconciles against the state that *produced* the order rather than "now" — in a replayed backtest the fill callback arrives on wall-clock time, long after the simulated clock moved on. Execution cost is modelled once, in `UnifiedStrategyEngine._costs_for`: `per_lot_roundtrip` is charged half on entry and half on exit, `slippage_per_fill` per fill per unit. The paper broker's own `slippage_per_fill` shifts the fill price instead — use one or the other, not both.
 
 ### API layer (`api/`)
 
