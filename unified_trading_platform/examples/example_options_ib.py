@@ -9,7 +9,13 @@ from dataclasses import asdict
 from typing import List
 
 from unified_trading_platform.trading_core.brokers.interactive_brokers.ib_broker import IBBroker
-from unified_trading_platform.trading_core.data_models import Contract, SecurityType, OptionRight, MarketDataType
+from unified_trading_platform.trading_core.data_models import (
+    Contract,
+    SecurityType,
+    OptionRight,
+    MarketDataType,
+    TickData,
+)
 from unified_trading_platform.trading_core.utils import get_logger
 
 # Initialize logger

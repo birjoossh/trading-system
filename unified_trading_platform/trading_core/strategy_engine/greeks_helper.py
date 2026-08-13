@@ -58,7 +58,15 @@ def yearfrac(start: datetime, end: datetime) -> float:
     return max(0.0, delta) / (365.0 * 24.0 * 3600.0)
 
 
-def bs_price_vec(S: Union[float, np.ndarray], K: Union[float, np.ndarray], T: float, r: float, q: float, sigma: Union[float, np.ndarray], cp: Union[str, np.ndarray]) -> Union[float, np.ndarray]:
+def bs_price_vec(
+    S: Union[float, np.ndarray],
+    K: Union[float, np.ndarray],
+    T: float,
+    r: float,
+    q: float,
+    sigma: Union[float, np.ndarray],
+    cp: Union[str, np.ndarray],
+) -> Union[float, np.ndarray]:
     """Vectorized Black-Scholes price."""
     S = np.asarray(S, dtype=float)
     K = np.asarray(K, dtype=float)
@@ -87,7 +95,15 @@ def bs_price_vec(S: Union[float, np.ndarray], K: Union[float, np.ndarray], T: fl
     return np.where(is_call, call_price, put_price)
 
 
-def bs_delta_vec(S: Union[float, np.ndarray], K: Union[float, np.ndarray], T: float, r: float, q: float, sigma: Union[float, np.ndarray], cp: Union[str, np.ndarray]) -> Union[float, np.ndarray]:
+def bs_delta_vec(
+    S: Union[float, np.ndarray],
+    K: Union[float, np.ndarray],
+    T: float,
+    r: float,
+    q: float,
+    sigma: Union[float, np.ndarray],
+    cp: Union[str, np.ndarray],
+) -> Union[float, np.ndarray]:
     """Vectorized Black-Scholes delta."""
     S = np.asarray(S, dtype=float)
     K = np.asarray(K, dtype=float)
@@ -136,8 +152,10 @@ def iv_from_price_scalar(S: float, K: float, T: float, r: float, q: float, cp: s
         
     plo = _price(lo)
     phi = _price(hi)
-    if p <= plo: return lo
-    if p >= phi: return hi
+    if p <= plo:
+        return lo
+    if p >= phi:
+        return hi
     
     a, b = lo, hi
     for _ in range(max_iter):

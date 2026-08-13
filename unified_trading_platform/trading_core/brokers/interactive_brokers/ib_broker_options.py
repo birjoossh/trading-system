@@ -161,7 +161,7 @@ class IBOptionsMixin:
                 for sub_id, _, _ in active_subscriptions:
                     try:
                         self.unsubscribe_market_data(sub_id)
-                    except:
+                    except Exception:
                         pass
 
             # Clear any remaining subscriptions

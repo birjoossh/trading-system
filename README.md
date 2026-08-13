@@ -204,12 +204,14 @@ sequenceDiagram
 
 ## Detailed Configuration
 
-Configuration is managed via `config.yaml`, creating a single source of truth for:
+Configuration is managed via `config.yaml` at the repo root, creating a single source of truth for:
 -   **Broker Settings**: Host, port, client IDs.
--   **System Paths**: Data directories, log paths.
--   **Trading defaults**: Risk limits, default quantities.
+-   **Exchange Settings**: Trading hours, currency, option-expiry weekday rules per exchange.
+-   **Trading defaults**: Contract/data defaults, database path, API metadata.
 
-The system uses `pydantic-settings` to load this configuration and allow environment variable overrides (e.g., `TRADING_SYSTEM_BROKERS__INTERACTIVE_BROKERS__HOST=192.168.1.5`).
+It is loaded by `trading_core/config/config.py` into a module-level `settings` singleton with dot-path access
+(`settings.get("system.default_exchange")`). Environment variable overrides use the `TRADING_CONFIG__` prefix
+with `__` as the path separator (e.g., `TRADING_CONFIG__BROKERS__INTERACTIVE_BROKERS__HOST=192.168.1.5`).
 
 ### Key Components
 **BrokerInterface**: Abstract base class that defines the interface all brokers must implement. This ensures consistency across different broker implementations.
@@ -228,12 +230,13 @@ The system uses `pydantic-settings` to load this configuration and allow environ
 
 ### Prerequisites
 
-1. **Python 3.7 or higher**
-2. **Interactive Brokers TWS or IB Gateway** (for IB integration)
+1. **Python 3.10 or higher**
+2. **Interactive Brokers TWS or IB Gateway** (only for live IB trading — the paper broker, backtests, and API work without it)
 3. **Required Python packages**:
 
 ```bash
-pip install pandas sqlite3 ibapi
+pip install -r requirements.txt
+pip install ibapi   # optional, only for the Interactive Brokers integration
 ```
 
 ### Interactive Brokers Setup
@@ -317,14 +320,26 @@ trading_system.shutdown()
 
 ### Running the Examples
 
-**Basic functionality example**:
+Run from the repo root so the `unified_trading_platform` package resolves:
+
+**Paper broker (no IB connection needed)**:
 ```bash
-python examples/example_ib.py
+python unified_trading_platform/examples/example_paper_broker.py
 ```
 
-**Strategy backtesting**:
+**Strategy backtesting** (replays the bundled `examples/2024-01-02.h5` NIFTY sample):
 ```bash
-python examples/example_strategy_manager.py
+python unified_trading_platform/examples/example_strategy_manager.py
+```
+
+**Interactive Brokers (requires a running TWS/Gateway and `pip install ibapi`)**:
+```bash
+python unified_trading_platform/examples/example_ib.py
+```
+
+**FastAPI gateway**:
+```bash
+python -m unified_trading_platform.api        # uvicorn on 0.0.0.0:8000, docs at /docs
 ```
 
 ## API Reference
@@ -364,8 +379,7 @@ The main interface for the trading system.
 ### Contract Specification
 
 ```python
-from trading_core.brokers.base_broker import Contract
-from trading_core.data_models.security_type_enum import SecurityType
+from unified_trading_platform.trading_core.data_models import Contract, SecurityType
 
 contract = Contract(
     symbol="AAPL",           # Symbol
@@ -381,7 +395,7 @@ contract = Contract(
 ### Order Specification
 
 ```python
-from trading_core.brokers.base_broker import Order, OrderType, OrderAction
+from unified_trading_platform.trading_core.data_models import Order, OrderType, OrderAction
 
 order = Order(
     action=OrderAction.BUY,     # BUY or SELL
@@ -398,28 +412,26 @@ order = Order(
 ### Directory Structure
 ```
 unified_trading_platform/
-    __init__.py
-    api/                    # API Endpoints & Runtime
-    docs/                   # Documentation
-    examples/               # Usage Examples
+    api/                    # FastAPI gateway (endpoints, pydantic models, runtime singleton)
+    docs/                   # Documentation (strategy_engine.md, exchange_config.md, ...)
+    examples/               # Runnable example scripts + sample H5 data
+    tests/                  # pytest suites (run: pytest unified_trading_platform/tests/)
     trading_core/
-        __init__.py
-        trading_system.py   # Main TradingSystem class
-        event_system.py     # Event Engine
+        trading_system.py   # Main TradingSystem facade
+        event_system.py     # Event Engine (broker threads -> strategy/DB decoupling)
         brokers/
-           __init__.py
-           base_broker.py
-           broker_factory.py
-           interactive_brokers/
-        data/
-           __init__.py
-           data_manager.py
-        orders/
-           __init__.py
-           order_manager.py
-        strategies/         # Strategy implementations
-        strategy_engine/    # Core Strategy Logic
-        data_models/        # Pydantic Models
+            base_broker.py      # BrokerInterface ABC
+            broker_factory.py   # Registry; brokers self-register here
+            interactive_brokers/  # Live trading (optional, needs ibapi)
+            paper_broker/         # Simulated broker + JioH5Adapter for backtests
+        config/             # config.yaml loader (settings singleton)
+        data/               # DataManager (historical + realtime, SQLite cache)
+        data_models/        # Shared domain types (Contract, Order, TickData, ...)
+        database/           # Strategy-run persistence helpers
+        orders/             # OrderManager (order lifecycle, trades)
+        strategies/         # Strategy JSON configs
+        strategy_engine/    # StrategyManager + UnifiedStrategyEngine + helpers
+        utils/              # Logger and small shared utilities
 ```
 
 ## Adding New Brokers
@@ -460,16 +472,11 @@ trading_system.add_broker(
 )
 ```
 
-## Examples and Testing
+## Testing
 
-### Running Tests
-
-Basic functionality test:
 ```bash
-python example_usage.py
+pytest unified_trading_platform/tests/    # unit + end-to-end backtest smoke tests
+ruff check .                              # lint
 ```
 
-Strategy backtesting:
-```bash
-python strategy_example.py
-```
+Both run automatically in CI (GitHub Actions) on every push and pull request.

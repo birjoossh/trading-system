@@ -110,12 +110,17 @@ def main():
             call_option = first_strike.call_option
             
             if call_option:
-                 logger.info(f"Selected Option: {call_option.symbol} {call_option.expiry} {call_option.strike} {call_option.option_right}")
+                 logger.info(
+                     f"Selected Option: {call_option.symbol} {call_option.expiry} "
+                     f"{call_option.strike} {call_option.option_right}"
+                 )
                  
                  # Subscribe to see Greeks
                  def greek_callback(tick):
                      if tick.delta is not None or tick.implied_volatility is not None:
-                         logger.info(f"GREEKS UPDATE: IV={tick.implied_volatility}, Delta={tick.delta}, Gamma={tick.gamma}")
+                         logger.info(
+                             f"GREEKS UPDATE: IV={tick.implied_volatility}, Delta={tick.delta}, Gamma={tick.gamma}"
+                         )
                          
                  # Create proper contract object from Option data
                  opt_contract = Contract(

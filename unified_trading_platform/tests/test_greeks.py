@@ -1,6 +1,11 @@
 
 import numpy as np
-from unified_trading_platform.trading_core.strategy_engine.greeks_helper import bs_price, bs_delta, bs_price_vec, bs_delta_vec
+from unified_trading_platform.trading_core.strategy_engine.greeks_helper import (
+    bs_price,
+    bs_delta,
+    bs_price_vec,
+    bs_delta_vec,
+)
 
 def test_greeks():
     S = 100.0

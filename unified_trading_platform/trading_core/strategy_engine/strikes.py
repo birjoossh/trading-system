@@ -1,6 +1,7 @@
 from __future__ import annotations
 import pandas as pd
 from unified_trading_platform.trading_core.strategy_engine.config import StrikeCriteria
+from unified_trading_platform.trading_core.config.config import settings
 from unified_trading_platform.trading_core.strategy_engine.greeks_helper import ensure_delta
 from unified_trading_platform.trading_core.utils import get_logger
 from datetime import datetime
@@ -21,8 +22,6 @@ def _detect_step(strikes: pd.Series, default: float = 50.0) -> float:
             pass
     return default
 
-
-from unified_trading_platform.trading_core.config.config import settings
 
 # Expiry inference (needed for delta computation)
 def _infer_expiry_dt(chain: pd.DataFrame, params: dict, exchange: str) -> datetime:
@@ -45,7 +44,8 @@ def _infer_expiry_dt(chain: pd.DataFrame, params: dict, exchange: str) -> dateti
             end_h, end_m = _get_close_time()
 
             # If date-only, set exchange close time
-            if getattr(dt_obj, "hour", 0) == 0 and getattr(dt_obj, "minute", 0) == 0 and getattr(dt_obj, "second", 0) == 0:
+            has_time = any(getattr(dt_obj, part, 0) for part in ("hour", "minute", "second"))
+            if not has_time:
                 dt_obj = dt_obj.replace(hour=end_h, minute=end_m, second=0, microsecond=0)
             
             return dt_obj.to_pydatetime() if hasattr(dt_obj, "to_pydatetime") else dt_obj
@@ -68,7 +68,13 @@ def _infer_expiry_dt(chain: pd.DataFrame, params: dict, exchange: str) -> dateti
     raise ValueError("expiry_dt not provided and no expiry column found in chain")
 
 
-def select_strike(chain: pd.DataFrame, option_type: str, atm_price: float, criteria: StrikeCriteria, exchange: str | None = None) -> float:
+def select_strike(
+    chain: pd.DataFrame,
+    option_type: str,
+    atm_price: float,
+    criteria: StrikeCriteria,
+    exchange: str | None = None,
+) -> float:
     """
     Select a strike from the provided option chain.
 

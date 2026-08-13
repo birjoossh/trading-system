@@ -183,7 +183,11 @@ class UnifiedStrategyEngine:
             ]
             try:
                 strike = select_strike(
-                    snap, leg.spec.option_type.upper(), underlying_price, leg.spec.strike_criteria, exchange=self.exchange
+                    snap,
+                    leg.spec.option_type.upper(),
+                    underlying_price,
+                    leg.spec.strike_criteria,
+                    exchange=self.exchange,
                 )
             except ValueError as e:
                 logger.debug(f"No strike selectable for leg {leg.leg_id} on this tick: {e}")
@@ -331,7 +335,11 @@ class UnifiedStrategyEngine:
             ]
             try:
                 strike = select_strike(
-                    snap, pen.spec.option_type.upper(), underlying_price, pen.spec.strike_criteria, exchange=self.exchange
+                    snap,
+                    pen.spec.option_type.upper(),
+                    underlying_price,
+                    pen.spec.strike_criteria,
+                    exchange=self.exchange,
                 )
             except ValueError:
                 strike = None
