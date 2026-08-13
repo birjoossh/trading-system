@@ -340,7 +340,10 @@ class PaperBroker(BrokerInterface):
                         sql = "SELECT * FROM tick_data WHERE symbol = ? AND exchange = ? ORDER BY timestamp ASC LIMIT 1"
                         rows = conn.execute(sql, (contract.symbol, contract.exchange)).fetchall()
                     else:
-                        sql = "SELECT * FROM tick_data WHERE symbol = ? AND exchange = ? AND timestamp > ? ORDER BY timestamp ASC"
+                        sql = (
+                            "SELECT * FROM tick_data WHERE symbol = ? AND exchange = ? "
+                            "AND timestamp > ? ORDER BY timestamp ASC"
+                        )
                         rows = conn.execute(sql, (contract.symbol, contract.exchange, last_ts)).fetchall()
                 for r in rows:
                     last_ts = r["timestamp"]

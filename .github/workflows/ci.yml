@@ -1,0 +1,31 @@
+name: CI
+
+on:
+  push:
+    branches: [main, trading_engine]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install ruff
+      - run: ruff check .
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - run: python -m pytest unified_trading_platform/tests/ -v
+      # The API must import (and the paper broker register) without ibapi installed
+      - run: python -c "import unified_trading_platform.api.main; print('API import OK')"

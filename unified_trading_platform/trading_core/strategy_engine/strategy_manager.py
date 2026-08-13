@@ -147,7 +147,9 @@ class StrategyManager:
             exch_cfg = settings.get_exchange_config(self.exchange)
             currency = exch_cfg.get("currency")
 
-            self.strategy_engine = UnifiedStrategyEngine(self.strategy_config, exchange=self.exchange, currency=currency)
+            self.strategy_engine = UnifiedStrategyEngine(
+                self.strategy_config, exchange=self.exchange, currency=currency
+            )
             self.strategy_engine.initialize(
                 current_date=current_date,
                 entry_time=self.strategy_config.entry_time,
@@ -403,7 +405,9 @@ class StrategyManager:
             symbol = meta["Symbol"]
             rows.append(
                 {
-                    "underlying_symbol": symbol.split("2")[0] if isinstance(symbol, str) else self.strategy_config.symbol,
+                    "underlying_symbol": (
+                        symbol.split("2")[0] if isinstance(symbol, str) else self.strategy_config.symbol
+                    ),
                     "expiry": meta["Expiry"],
                     "strike": strike,
                     "option_type": opt_type,

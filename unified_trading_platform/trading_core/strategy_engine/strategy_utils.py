@@ -5,13 +5,11 @@ import pandas as pd
 
 from unified_trading_platform.trading_core.data_models import TickData
 from unified_trading_platform.trading_core.utils import get_logger
+from unified_trading_platform.trading_core.config.config import settings
 
 from .config import LegSpec, RiskConfig, RiskRule, TrailRule, ReEntryRule
 
 logger = get_logger(__name__)
-
-
-from unified_trading_platform.trading_core.config.config import settings
 
 def _get_expiry_params(exchange: str) -> dict:
     """Get numeric weekday params from config for any exchange.
