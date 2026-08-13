@@ -35,7 +35,7 @@ logging:
   console: true
 
 database:
-  path: "trading_system2.db"
+  path: "trading_system.db"
   # Support future SQL backends if needed
   type: "sqlite" 
 

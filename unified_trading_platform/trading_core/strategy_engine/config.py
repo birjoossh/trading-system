@@ -107,12 +107,16 @@ class StrategyConfig:
     square_off_mode: str = "Partial"
     trail_to_be: TrailToBE = dc.field(default_factory=TrailToBE)
     lot_size: int = 50
-    symbol: str = dc.field(default_factory=lambda: (_ for _ in ()).throw(
-        ValueError("symbol must be specified in strategy config JSON (e.g. 'NIFTY 50')")))
-    currency: str = dc.field(default_factory=lambda: (_ for _ in ()).throw(
-        ValueError("currency must be specified in strategy config JSON (e.g. 'INR')")))
+    symbol: str = ""
+    currency: str = ""
     legs: List[LegSpec] = dc.field(default_factory=list)
     costs: Dict = dc.field(default_factory=lambda: {"per_lot_roundtrip": 0.0, "slippage_per_fill": 0.0})
+
+    def __post_init__(self):
+        if not self.symbol:
+            raise ValueError("symbol must be specified in strategy config JSON (e.g. 'NIFTY 50')")
+        if not self.currency:
+            raise ValueError("currency must be specified in strategy config JSON (e.g. 'INR')")
 
 
 def load_strategy_config(strategy_name: str, strategies_dir: str = None) -> StrategyConfig:

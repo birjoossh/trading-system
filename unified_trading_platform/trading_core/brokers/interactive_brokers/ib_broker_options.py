@@ -5,7 +5,6 @@ import threading
 import time
 from datetime import datetime, date
 from typing import List, Optional, Dict, Any, Set
-from unified_trading_platform.trading_core.utils.utils import generate_unique_id
 from unified_trading_platform.trading_core.data_models.option_chain import (
     OptionChain,
     StrikeGroup,

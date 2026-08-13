@@ -5,7 +5,7 @@ Handles broker connections, disconnections, and account information.
 
 from fastapi import APIRouter, HTTPException, status
 from typing import List
-from unified_trading_platform.runtime import get_trading_system
+from unified_trading_platform.api.runtime import get_trading_system
 from ..models import (
     AddBrokerRequest,
     BrokerInfo,

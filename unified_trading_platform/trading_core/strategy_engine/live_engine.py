@@ -47,6 +47,7 @@ class OrderSignal:
     order_type: OrderType = OrderType.MARKET
     leg_id: Optional[int] = None
     parent_leg_id: Optional[int] = None  # For re-entries
+    is_exit: bool = False  # True when this signal closes an existing leg
     comment: str = ""  # Optional comment about the signal
     signal_timestamp: Optional[dt.datetime] = None
 
@@ -138,7 +139,7 @@ class UnifiedStrategyEngine:
         """Check if we have any open positions"""
         return any(leg.entry_ts is not None for leg in self.live_legs)
 
-    def generate_signal_for_leg(self, leg: LiveLeg):
+    def generate_signal_for_leg(self, leg: LiveLeg, closing: bool = False):
         # Create order signal
         contract = Contract(
             symbol=f"{leg.spec.option_type}{leg.strike}",
@@ -151,10 +152,12 @@ class UnifiedStrategyEngine:
             multiplier=str(self.config.lot_size),
         )
 
-        action = OrderAction.BUY if leg.spec.position.lower().startswith("buy") else OrderAction.SELL
+        is_long = leg.spec.position.lower().startswith("buy")
+        if closing:
+            is_long = not is_long  # closing reverses the side
+        action = OrderAction.BUY if is_long else OrderAction.SELL
 
-        signal = OrderSignal(action=action, contract=contract, quantity=leg.qty, leg_id=leg.leg_id)
-        return signal
+        return OrderSignal(action=action, contract=contract, quantity=leg.qty, leg_id=leg.leg_id, is_exit=closing)
 
     def _check_entry_conditions(
         self, tick_data: TickData, underlying_price: float, option_chain: Optional[pd.DataFrame]
@@ -165,8 +168,11 @@ class UnifiedStrategyEngine:
         if option_chain is None:
             return signals  # Need option chain for entry
 
+        # Respect the strategy's entry time — don't enter on earlier ticks
+        if self.entry_time and tick_data.timestamp.time() < dt.time.fromisoformat(self.entry_time):
+            return signals
+
         for leg in self.live_legs:
-            logger.info(f"Checking entry conditions for leg: {leg}")
             if leg.entry_ts is not None:
                 continue  # Already entered
 
@@ -175,27 +181,32 @@ class UnifiedStrategyEngine:
             snap = option_chain[
                 (option_chain["expiry"] == exp_date) & (option_chain["option_type"] == leg.spec.option_type.upper())
             ]
-            strike = select_strike(snap, leg.spec.option_type.upper(), underlying_price, leg.spec.strike_criteria, exchange=self.exchange)
+            try:
+                strike = select_strike(
+                    snap, leg.spec.option_type.upper(), underlying_price, leg.spec.strike_criteria, exchange=self.exchange
+                )
+            except ValueError as e:
+                logger.debug(f"No strike selectable for leg {leg.leg_id} on this tick: {e}")
+                strike = None
             if strike is None:
                 continue
 
-            leg.strike = strike
-            leg.signal_timestamp = tick_data.timestamp
-
-            signals.append(self.generate_signal_for_leg(leg))
-
-            leg.entry_ts = tick_data.timestamp
-            # Use option premium from chain; skip if unavailable
+            # Only enter once we have a premium for the selected strike
             option_premium = self._lookup_premium(option_chain, strike, leg.spec.option_type)
             if option_premium is None:
                 logger.warning(f"Skipping entry for Leg {leg.leg_id}: Option premium not found for strike {strike}")
                 continue
 
+            leg.strike = strike
+            leg.signal_timestamp = tick_data.timestamp
+            leg.entry_ts = tick_data.timestamp
             leg.entry_px = option_premium
             leg.entry_S = underlying_price
             leg.best_fav_px = leg.entry_px
+            signals.append(self.generate_signal_for_leg(leg))
             logger.info(
-                f"Leg {leg.leg_id} entered: {leg.spec.position} {leg.spec.option_type}@{strike} premium={leg.entry_px:.2f} underlying={underlying_price:.2f}"
+                f"Leg {leg.leg_id} entered: {leg.spec.position} {leg.spec.option_type}@{strike} "
+                f"premium={leg.entry_px:.2f} underlying={underlying_price:.2f}"
             )
 
         return signals
@@ -262,7 +273,7 @@ class UnifiedStrategyEngine:
                 leg.hit_trail = True
 
             if should_exit:
-                signals.append(self.generate_signal_for_leg(leg))
+                signals.append(self.generate_signal_for_leg(leg, closing=True))
 
                 # Mark as exited — in forward mode, this should be updated from actual fill
                 leg.exit_ts = tick_data.timestamp
@@ -281,72 +292,69 @@ class UnifiedStrategyEngine:
         signals = []
         new_pending = []
 
-        # fixme: should this return empty signal list or try fetching option_chain?
         if option_chain is None:
             return signals
 
         for pen in self.pending_reentries:
-            exp_date = resolve_expiry_keyword(self.current_date, pen.spec.expiry, self.exchange)
-            strike = select_strike(
-                option_chain, pen.spec.option_type.upper(), underlying_price, pen.spec.strike_criteria, exchange=self.exchange
-            )
-            if strike is not None:
-                # Create new leg
-                new_leg = LiveLeg(
-                    leg_id=len(self.live_legs) + 1,
-                    spec=pen.spec,
-                    strike=strike,
-                    qty=int(pen.spec.qty_lots) * int(self.config.lot_size),
-                )
-                new_leg.expiry_date = exp_date
-                new_leg.entry_ts = tick_data.timestamp
-                # Use option premium from chain for re-entry price
-                option_premium = self._lookup_premium(option_chain, strike, pen.spec.option_type)
-                if option_premium is None:
-                    # Skip if no price
-                    # fixme: should we retry later? Yes, by not processing it now.
-                    # But we already created new_leg object locally... 
-                    # If we continue here, we skip 'if strike is not None' block end?
-                    # The code structure here is a bit complex.
-                    # Let's just not set entry_px yet? No, we need it.
-                    continue
-                
-                new_leg.entry_px = option_premium
-                new_leg.entry_S = underlying_price
-                new_leg.best_fav_px = new_leg.entry_px
-                new_leg.parent_leg_id = pen.parent_leg_id
-                new_leg.strike = strike
-
+            # Decide whether this pending re-entry triggers on this tick
             mode = pen.mode
+            triggered = False
+
             if mode.startswith("RE_ASAP") or mode == "LAZY_LEG":
-                self.live_legs.append(new_leg)
-                signals.append(self.generate_signal_for_leg(new_leg))
+                triggered = True
+            elif mode.startswith("RE_COST"):
+                current_price = tick_data.close or tick_data.last or tick_data.bid or tick_data.ask
+                if current_price is not None and pen.watch_price is not None:
+                    triggered = (
+                        (current_price >= pen.watch_price)
+                        if pen.spec.position == "Buy"
+                        else (current_price <= pen.watch_price)
+                    )
+            elif mode.startswith("RE_MOMENTUM"):
+                pts = float((self.config.overall_momentum or {}).get("points", 0.0))
+                current_price = tick_data.close or tick_data.last or tick_data.bid or tick_data.ask
+                if pts > 0 and current_price is not None and pen.watch_price is not None:
+                    triggered = current_price >= (pen.watch_price + pts)
+            else:
+                logger.warning(f"Dropping pending re-entry with unknown mode '{mode}'")
                 continue
 
-            elif mode.startswith("RE_COST"):
-                # Cost-based re-entry
-                current_price = tick_data.close or tick_data.last or tick_data.bid or tick_data.ask
-                ok = (
-                    (current_price >= pen.watch_price)
-                    if pen.spec.position == "Buy"
-                    else (current_price <= pen.watch_price)
-                )
-                if ok:
-                    self.live_legs.append(new_leg)
-                    signals.append(self.generate_signal_for_leg(new_leg))
-                    continue
-
-            elif mode.startswith("RE_MOMENTUM"):
-                # Momentum-based re-entry
-                pts = float(self.config.overall_momentum.get("points", 0.0))
-                if pts > 0:
-                    current_price = tick_data.close or tick_data.last or tick_data.bid or tick_data.ask
-                    if current_price >= (pen.watch_price + pts):  # fixme: the condition should be based on long/short
-                        self.live_legs.append(new_leg)
-                        signals.append(self.generate_signal_for_leg(new_leg))
-                        continue
-            else:
+            if not triggered:
                 new_pending.append(pen)
+                continue
+
+            # Triggered: resolve strike and premium; if either is unavailable, stay pending
+            exp_date = resolve_expiry_keyword(self.current_date, pen.spec.expiry, self.exchange)
+            snap = option_chain[
+                (option_chain["expiry"] == exp_date)
+                & (option_chain["option_type"] == pen.spec.option_type.upper())
+            ]
+            try:
+                strike = select_strike(
+                    snap, pen.spec.option_type.upper(), underlying_price, pen.spec.strike_criteria, exchange=self.exchange
+                )
+            except ValueError:
+                strike = None
+            option_premium = self._lookup_premium(option_chain, strike, pen.spec.option_type) if strike else None
+            if strike is None or option_premium is None:
+                new_pending.append(pen)
+                continue
+
+            new_leg = LiveLeg(
+                leg_id=len(self.live_legs) + 1,
+                spec=pen.spec,
+                strike=strike,
+                qty=int(pen.spec.qty_lots) * int(self.config.lot_size),
+            )
+            new_leg.expiry_date = exp_date
+            new_leg.entry_ts = tick_data.timestamp
+            new_leg.entry_px = option_premium
+            new_leg.entry_S = underlying_price
+            new_leg.best_fav_px = new_leg.entry_px
+            new_leg.parent_leg_id = pen.parent_leg_id
+            self.live_legs.append(new_leg)
+            signals.append(self.generate_signal_for_leg(new_leg))
+
         self.pending_reentries = new_pending
         return signals
 
@@ -466,20 +474,29 @@ class UnifiedStrategyEngine:
         return self.live_legs
 
     def update_position_on_fill(self, leg_id: int, fill_info: Dict):
-        """Update position when an order is filled"""
+        """Refine a leg's bookkeeping with actual fill data.
+
+        The engine already records entry/exit at signal time using chain prices,
+        so a fill only overrides those values when it carries real data — a
+        missing/zero fill price or absent underlying must not clobber them."""
         for leg in self.live_legs:
-            if leg.leg_id == leg_id:
-                # Update leg with fill information
-                if fill_info.get("action") == "entry":
-                    leg.entry_ts = pd.Timestamp(fill_info.get("timestamp"))
-                    leg.entry_px = fill_info.get("price")
-                    leg.entry_S = fill_info.get("underlying_price")
-                    leg.best_fav_px = leg.entry_px
-                elif fill_info.get("action") == "exit":
-                    leg.exit_ts = pd.Timestamp(fill_info.get("timestamp"))
-                    leg.exit_px = fill_info.get("price")
-                    # leg.exit_reason = fill_info.get('reason', 'FILLED')
-                break
+            if leg.leg_id != leg_id:
+                continue
+            fill_px = fill_info.get("price")
+            if fill_info.get("action") == "entry":
+                if fill_px:
+                    leg.entry_px = fill_px
+                    leg.best_fav_px = fill_px
+                if fill_info.get("underlying_price"):
+                    leg.entry_S = fill_info["underlying_price"]
+                if leg.entry_ts is None and fill_info.get("timestamp"):
+                    leg.entry_ts = pd.Timestamp(fill_info["timestamp"])
+            elif fill_info.get("action") == "exit":
+                if fill_px:
+                    leg.exit_px = fill_px
+                if leg.exit_ts is None and fill_info.get("timestamp"):
+                    leg.exit_ts = pd.Timestamp(fill_info["timestamp"])
+            break
 
     def should_exit(self, current_time: dt.time) -> bool:
         """Check if we should exit based on time"""

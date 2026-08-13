@@ -6,7 +6,7 @@ Handles order submission, cancellation, status, and position management.
 from typing import Optional
 from datetime import datetime
 from pydantic import BaseModel, Field, ConfigDict
-from unified_trading_platform.api.config import get_config_value
+from unified_trading_platform.trading_core.config.config import settings
 
 
 class BaseOrderRequest(BaseModel):
@@ -18,23 +18,23 @@ class BaseOrderRequest(BaseModel):
     quantity: int = Field(..., gt=0, description="Order quantity", examples=[100, 1000])
     broker_name: str = Field(..., description="Broker to use", examples=["ib_paper"])
     security_type: str = Field(
-        default_factory=lambda: get_config_value("contract.default_security_type", "STK"),
+        default_factory=lambda: settings.get("defaults.contract.security_type", "STK"),
         description="Security type",
         examples=["STK", "OPT"],
     )
     currency: str = Field(
-        default_factory=lambda: get_config_value("contract.default_currency", "USD"),
+        default_factory=lambda: settings.get("defaults.contract.currency", "USD"),
         description="Currency code",
         examples=["USD"],
     )
     account: Optional[str] = Field(default=None, description="Account ID", examples=[None, "DU123456"])
     time_in_force: str = Field(
-        default_factory=lambda: get_config_value("contract.default_time_in_force", "DAY"),
+        default_factory=lambda: settings.get("defaults.contract.time_in_force", "DAY"),
         description="DAY, GTC, IOC, FOK, etc.",
         examples=["DAY", "GTC", "IOC", "FOK"],
     )
     order_type: str = Field(
-        default_factory=lambda: get_config_value("contract.default_order_type", "MARKET"),
+        default_factory=lambda: settings.get("defaults.contract.order_type", "MARKET"),
         description="Order type",
         examples=["MARKET", "LIMIT", "STOP", "STOP_LIMIT"],
     )

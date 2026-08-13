@@ -4,7 +4,6 @@ Implements the BrokerInterface for IB TWS/Gateway API.
 """
 
 import threading
-import time
 from typing import Dict, List, Callable, Any
 from datetime import datetime
 
@@ -119,7 +118,7 @@ class IBBroker(BrokerInterface):
             return False
 
     def _req_account_updates(self):
-        accounts = self.client.reqManagedAccts()
+        self.client.reqManagedAccts()
 
     def _create_ib_contract(self, contract: Contract) -> IBContract:
         """Convert our Contract to IB Contract with enhanced options support"""
@@ -174,13 +173,6 @@ class IBBroker(BrokerInterface):
             ib_order.account = str(order.account)
         ib_order.eTradeOnly = False
         return ib_order
-
-    def get_historical_data(
-        self, contract: Contract, duration: str, bar_size: str, what_to_show: str = "TRADES"
-    ) -> List[TickData]:
-        """Get historical bar data"""
-        if not self.is_connected:
-            raise Exception("Not connected to broker")
 
     def get_historical_data(
         self, contract: Contract, duration: str, bar_size: str, what_to_show: str = "TRADES"
@@ -301,10 +293,6 @@ class IBBroker(BrokerInterface):
 
     def get_market_data_subscriptions(self) -> List[str]:
         return self.market_data.get_market_data_subscriptions()
-
-    def get_contract_details(self, contract: Contract) -> Dict[str, Any]:
-        if not self.is_connected:
-            raise Exception("Not connected to broker")
 
     def get_contract_details(self, contract: Contract) -> Dict[str, Any]:
         if not self.is_connected:

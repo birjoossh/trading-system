@@ -5,7 +5,7 @@ Handles broker connection and account information.
 
 from typing import Optional, Dict, Any
 from pydantic import BaseModel, Field, ConfigDict
-from unified_trading_platform.api.config import get_config_value
+from unified_trading_platform.trading_core.config.config import settings
 
 
 class AddBrokerRequest(BaseModel):
@@ -31,17 +31,17 @@ class AddBrokerRequest(BaseModel):
         examples=["interactive_brokers", "paper_broker"],
     )
     host: str = Field(
-        default_factory=lambda: get_config_value("broker.default_host", "127.0.0.1"),
+        default_factory=lambda: settings.get("brokers.interactive_brokers.host", "127.0.0.1"),
         description="Broker host address",
         examples=["127.0.0.1"],
     )
     port: int = Field(
-        default_factory=lambda: get_config_value("broker.default_port", 7498),
+        default_factory=lambda: settings.get("brokers.interactive_brokers.port", 7498),
         description="Broker port",
         examples=[7497, 7498, 4002],
     )
     client_id: int = Field(
-        default_factory=lambda: get_config_value("broker.default_client_id", 1),
+        default_factory=lambda: settings.get("brokers.interactive_brokers.client_id", 1),
         description="Client ID for connection",
         examples=[1, 2, 3],
     )

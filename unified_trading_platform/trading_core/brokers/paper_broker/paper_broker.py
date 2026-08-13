@@ -79,6 +79,8 @@ class PaperBroker(BrokerInterface):
 
     # ---- Option Chain ----
     def get_option_chain(self, contract: Contract) -> OptionChain:
+        if not self.config.h5_path:
+            raise ValueError("PaperBroker needs an h5_path to serve option chains")
         df = JioH5Adapter(self.config.h5_path, exchange=contract.exchange)
         option_chain = df.options_table()
         logger.debug("option_chain = %s", option_chain)
@@ -371,8 +373,10 @@ class PaperBroker(BrokerInterface):
         t.start()
         return f"{contract.symbol}:{contract.exchange}"
 
-    def unsubscribe_market_data(self, contract: Contract) -> bool:
-        key = (contract.symbol, contract.exchange)
+    def unsubscribe_market_data(self, subscription_id: str) -> bool:
+        # Subscription IDs are "SYMBOL:EXCHANGE" (see subscribe_market_data)
+        symbol, _, exchange = subscription_id.rpartition(":")
+        key = (symbol, exchange)
         if key in self._md_stops:
             self._md_stops[key].set()
             return True
@@ -410,7 +414,13 @@ class PaperBroker(BrokerInterface):
         return []
 
     def get_account_info(self) -> Dict[str, Any]:
-        return {"account": "PAPER", "cash": 1_000_000}
+        return {
+            "account_id": "PAPER",
+            "cash_balance": 1_000_000.0,
+            "buying_power": 1_000_000.0,
+            "total_value": 1_000_000.0,
+            "equity": 1_000_000.0,
+        }
 
     def get_contract_details(self, contract: Contract) -> Dict[str, Any]:
         raise NotImplementedError
@@ -419,10 +429,11 @@ class PaperBroker(BrokerInterface):
         raise NotImplementedError
 
     def get_market_data_subscriptions(self) -> List[str]:
-        raise NotImplementedError
+        return [f"{symbol}:{exchange}" for symbol, exchange in self._md_threads]
 
     def set_market_data_type(self, market_data_type: str) -> bool:
-        raise NotImplementedError
+        # Paper broker replays recorded data; the market data type has no effect.
+        return True
 
     def _update_order_status(self, order_id: str, status: OrderStatus, delay: float = 0) -> None:
         """Queue an order status update."""
@@ -431,10 +442,20 @@ class PaperBroker(BrokerInterface):
             try:
                 time.sleep(delay)
                 if order_id in self._orders:
-                    self._orders[order_id].update({"status": status})
-                    self.trigger_callback("order_status", order_id, self._orders[order_id])
+                    entry = self._orders[order_id]
+                    entry.update({"status": status})
+                    if status == OrderStatus.FILLED:
+                        order = entry["order"]
+                        entry.update(
+                            {
+                                "filled": order.quantity,
+                                "remaining": 0,
+                                "avg_fill_price": order.limit_price or 0.0,
+                            }
+                        )
+                    self.trigger_callback("order_status", order_id, entry)
             except Exception as e:
-                self.logger.error(f"Error in order status update for {order_id}: {e}")
+                logger.error(f"Error in order status update for {order_id}: {e}")
 
         if delay > 0:
             thread = threading.Thread(target=update_and_cleanup, daemon=True)

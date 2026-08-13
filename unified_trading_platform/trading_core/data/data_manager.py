@@ -61,8 +61,16 @@ class DataManager:
                 )
             """)
 
-    def _get_broker(self, name: str) -> BrokerInterface:
-        """Add a broker for data retrieval"""
+    def _get_broker(self, name: Optional[str]) -> BrokerInterface:
+        """Resolve a broker by name, falling back to the sole registered broker."""
+        if not self.brokers:
+            raise ValueError("No brokers registered")
+        if name is None:
+            if len(self.brokers) == 1:
+                return next(iter(self.brokers.values()))
+            raise ValueError(f"broker_name is required when multiple brokers are registered: {list(self.brokers)}")
+        if name not in self.brokers:
+            raise ValueError(f"Broker '{name}' not found. Available: {list(self.brokers)}")
         return self.brokers[name]
 
     def add_broker(self, name: str, broker: BrokerInterface):
@@ -117,33 +125,31 @@ class DataManager:
         if not bars:
             return
 
-        # Convert TickData list to DataFrame
-        data = [
-            {
-                "symbol": bar.symbol,
-                "exchange": bar.exchange,
-                "security_type": bar.security_type,
-                "currency": bar.currency,
-                "timestamp": bar.timestamp,
-                "open": bar.open,
-                "high": bar.high,
-                "low": bar.low,
-                "close": bar.close,
-                "volume": bar.volume,
-                "bar_size": getattr(bar, "bar_size", "1 min"),
-                "bid": bar.bid,
-                "ask": bar.ask,
-                "open_interest": bar.open_interest,
-                "vwap": getattr(bar, "vwap", None),
-                "last": bar.last if hasattr(bar, "last") else bar.close,
-            }
+        rows = [
+            (
+                bar.symbol,
+                bar.exchange,
+                bar.security_type.value if bar.security_type else None,
+                bar.currency,
+                bar.timestamp.isoformat(),
+                bar.open,
+                bar.high,
+                bar.low,
+                bar.close,
+                bar.volume,
+                getattr(bar, "bar_size", "1 min"),
+            )
             for bar in bars
         ]
-        df = pd.DataFrame(data)
-        df.set_index("timestamp", inplace=True)
-
         with sqlite3.connect(self.db_path) as conn:
-            df.to_sql("historical_bars", conn, if_exists="append", index=True, index_label="timestamp")
+            conn.executemany(
+                """
+                INSERT OR REPLACE INTO historical_bars
+                (symbol, exchange, security_type, currency, timestamp, open, high, low, close, volume, bar_size)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                rows,
+            )
 
     def _get_cached_bars(self, contract: Contract, bar_size: str, duration: str) -> List[TickData]:
         """Retrieve cached bar data as a list of TickData
@@ -168,8 +174,8 @@ class DataManager:
             start_date = end_date - timedelta(days=30)  # Default
 
         query = """
-            SELECT timestamp, open, high, low, close, volume, bid, ask, open_interest, vwap, last
-            FROM historical_bars 
+            SELECT timestamp, open, high, low, close, volume
+            FROM historical_bars
             WHERE symbol = ? AND exchange = ? AND bar_size = ?
             AND timestamp >= ? AND timestamp <= ?
             ORDER BY timestamp
@@ -184,7 +190,7 @@ class DataManager:
 
             for row in cursor.fetchall():
                 tick_data = TickData(
-                    timestamp=row[0],
+                    timestamp=pd.to_datetime(row[0]),
                     exchange=contract.exchange,
                     security_type=contract.security_type,
                     symbol=contract.symbol,
@@ -194,11 +200,6 @@ class DataManager:
                     low=row[3],
                     close=row[4],
                     volume=row[5],
-                    bid=row[6],  # bid from query with COALESCE
-                    ask=row[7],  # ask from query with COALESCE
-                    open_interest=row[8],  # open_interest from query with COALESCE
-                    vwap=row[9],  # vwap from query with COALESCE
-                    last=row[10],  # last from query with COALESCE
                 )
                 tick_data_list.append(tick_data)
 
@@ -250,7 +251,9 @@ class DataManager:
                 """,
                 (
                     tick_data.exchange,
-                    tick_data.security_type.value,
+                    tick_data.security_type.value
+                    if hasattr(tick_data.security_type, "value")
+                    else str(tick_data.security_type),
                     tick_data.symbol,
                     tick_data.currency,
                     tick_data.timestamp.isoformat(),

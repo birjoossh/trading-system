@@ -6,7 +6,6 @@ import datetime as dt
 from unified_trading_platform.trading_core.strategy_engine.strikes import select_strike, _detect_step
 from unified_trading_platform.trading_core.strategy_engine.config import StrikeCriteria
 from unified_trading_platform.trading_core.strategy_engine.greeks_helper import bs_price_vec, bs_delta_vec, compute_iv_delta_for_chain
-import unified_trading_platform.trading_core.strategy_engine.strategy_utils as utils
 
 class TestStrategyComponents(unittest.TestCase):
     

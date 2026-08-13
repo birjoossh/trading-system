@@ -288,27 +288,26 @@ class OrderManager:
 
     def _save_trade(self, trade: Trade, order_id: str):
         """Save trade to database"""
-        trade_id = str(uuid.uuid4())
+        trade_id = trade.trade_id or str(uuid.uuid4())
 
         with sqlite3.connect(self.db_path) as conn:
             conn.execute(
                 """
-                INSERT OR REPLACE INTO trades 
-                (trade_id, order_id, broker_trade_id, execution_id, symbol, 
-                 quantity, price, timestamp, side, commission)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT OR REPLACE INTO trades
+                (trade_id, order_id, broker_trade_id, execution_id,
+                 quantity, price, commission, timestamp, exchange)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
                 (
                     trade_id,
                     order_id,
                     trade.order_id,
                     trade.execution_id,
-                    trade.contract.symbol,
                     trade.quantity,
                     trade.price,
-                    trade.timestamp.isoformat(),
-                    trade.side.value,
                     trade.commission,
+                    trade.timestamp.isoformat(),
+                    trade.contract.exchange,
                 ),
             )
 

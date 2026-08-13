@@ -1,46 +1,46 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "unified_trading_platform"
+version = "1.0.0"
+description = "A modular Python trading system for Interactive Brokers and other brokers"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "pandas>=1.3.0",
+    "numpy>=1.20.0",
+    "pyyaml>=6.0",
+    "tables>=3.8.0",
+    "fastapi>=0.110.0",
+    "uvicorn>=0.22.0",
+]
+
+[project.optional-dependencies]
+ib = ["ibapi>=9.81.1"]
+dev = ["pytest>=6.0.0", "ruff"]
+
+[tool.setuptools.packages.find]
+include = ["unified_trading_platform*"]
+
 [tool.ruff]
-# Enable Pyflakes (`F`) and a subset of the pycodestyle (`E`) codes by default.
-select = ["E", "F"]
-ignore = []
-
-# Allow fix for all enabled rules (when `--fix`) is provided.
-fixable = ["ALL"]
-unfixable = []
-
-# Exclude a variety of commonly ignored directories.
+line-length = 120
+target-version = "py310"
 exclude = [
-    ".bzr",
-    ".direnv",
-    ".eggs",
     ".git",
-    ".git-rewrite",
-    ".hg",
-    ".mypy_cache",
-    ".nox",
-    ".pants.d",
-    ".pytype",
     ".ruff_cache",
-    ".svn",
-    ".tox",
     ".venv",
     "__pypackages__",
-    "_build",
-    "buck-out",
     "build",
     "dist",
-    "node_modules",
     "venv",
 ]
 
-# Same as Black.
-line-length = 120
-
-# Allow unused variables when underscore-prefixed.
+[tool.ruff.lint]
+select = ["E", "F"]
+fixable = ["ALL"]
 dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
 
-# Target Python 3.10
-target-version = "py310"
-
-[tool.ruff.mccabe]
-# Unlike Flake8, default to a complexity level of 10.
+[tool.ruff.lint.mccabe]
 max-complexity = 10

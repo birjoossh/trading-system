@@ -41,26 +41,20 @@ class BrokerFactory:
         return list(cls._brokers.keys())
 
 
-# Register Interactive Brokers
-# try:
-from unified_trading_platform.trading_core.brokers.interactive_brokers.ib_broker import IBBroker
+def _register_builtin_brokers():
+    # Interactive Brokers requires the optional `ibapi` package; the rest of the
+    # system (paper broker, backtests, API) must keep working without it.
+    try:
+        from unified_trading_platform.trading_core.brokers.interactive_brokers.ib_broker import IBBroker
 
-logger.info("Registering Interactive Brokers ...")
-BrokerFactory.register_broker("ib", IBBroker)
-BrokerFactory.register_broker("interactive_brokers", IBBroker)
-# except ImportError:
-#     logger.warning("Interactive Brokers not available")
+        BrokerFactory.register_broker("ib", IBBroker)
+        BrokerFactory.register_broker("interactive_brokers", IBBroker)
+    except ImportError:
+        logger.warning("Interactive Brokers not available (install the 'ibapi' package to enable it)")
 
-# TODO: Add other brokers here
-# BrokerFactory.register_broker('alpaca', AlpacaBroker)
-# BrokerFactory.register_broker('td_ameritrade', TDBroker)
-# BrokerFactory.register_broker('binance', BinanceBroker)
-
-# Register Paper broker
-try:
     from unified_trading_platform.trading_core.brokers.paper_broker import PaperBroker
 
-    logger.info("Registering Paper broker ...")
     BrokerFactory.register_broker("paper", PaperBroker)
-except ImportError:
-    logger.warning("Paper broker not available")
+
+
+_register_builtin_brokers()

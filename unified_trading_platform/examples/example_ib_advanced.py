@@ -13,7 +13,6 @@ Prerequisite: TWS/Gateway running on localhost:7497 (Paper) or 4002.
 
 import time
 import logging
-from datetime import datetime
 from unified_trading_platform.trading_core.trading_system import TradingSystem
 from unified_trading_platform.trading_core.utils import get_logger
 from unified_trading_platform.trading_core.data_models import (

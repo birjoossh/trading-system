@@ -16,7 +16,6 @@ from unified_trading_platform.trading_core.data_models import OrderAction, Order
 
 from unified_trading_platform.trading_core.brokers.interactive_brokers.common import CommonMixin
 from concurrent.futures import Future
-from typing import Optional
 
 logger = get_logger(__name__)
 
@@ -56,12 +55,14 @@ class IBClient(EWrapper, EClient):
         # Initialize accumulator
         self._accumulators[req_id] = []
         try:
-             self.reqHistoricalData(req_id, ib_contract, "", duration, bar_size, what_to_show, 1, 1, False, [])
+            self.reqHistoricalData(req_id, ib_contract, "", duration, bar_size, what_to_show, 1, 1, False, [])
         except Exception as e:
             self.request_manager.set_error(req_id, e)
             del self._accumulators[req_id]
         return future
-        """Receive next valid order ID"""
+
+    def nextValidId(self, orderId: int):
+        """Receive next valid order ID — signals the connection is ready."""
         self.broker.next_order_id = orderId
         try:
             self.broker._connected_event.set()

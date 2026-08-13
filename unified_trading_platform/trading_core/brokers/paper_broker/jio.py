@@ -12,6 +12,15 @@ from pathlib import Path
 import pandas as pd
 
 
+def to_pandas_freq(bar_size: str) -> str:
+    """Normalize bar sizes ("1H", "1 hour", "5 mins", "1min") to pandas offset aliases."""
+    s = str(bar_size).strip().lower().replace(" ", "")
+    for suffix, alias in (("hours", "h"), ("hour", "h"), ("mins", "min"), ("secs", "s"), ("sec", "s")):
+        if s.endswith(suffix):
+            return s[: -len(suffix)] + alias
+    return s
+
+
 class JioH5Adapter:
     # Reads daily .h5 with '/tick_data' and exposes:
     # spot_series(), futures_series(), options_table().
@@ -160,29 +169,29 @@ class JioH5Adapter:
 
         if "tsym" not in df.columns:
             raise ValueError("tick_data lacks trading symbol column")
+
+        base = df
         if ticker is not None:
-            base = df[df["tsym"] == ticker].copy()
-
+            base = base[base["tsym"] == ticker]
         if exchange is not None:
-            base = df[df["exchange"] == exchange].copy()
-
-        if opt_type is not None:
-            base = df[df["OptionType"] == opt_type].copy()
-
-        if expiry is not None:
-            base = df[df["expiry"] == expiry].copy()
+            base = base[base["exchange"] == exchange]
+        if opt_type is not None and "OptionType" in base.columns:
+            base = base[base["OptionType"] == opt_type]
+        if expiry is not None and "Expiry" in base.columns:
+            expiry_date = pd.to_datetime(expiry, format="mixed").date()
+            base = base[base["Expiry"] == expiry_date]
 
         if base.empty:
             return pd.DataFrame()
 
+        base = base.copy()
+        base.index.name = "timestamp"
+        bar_length = to_pandas_freq(bar_length)
         ohlc = base.groupby([pd.Grouper(freq=bar_length), "OptionType", "Strike"]).agg(
             {"price": ["first", "max", "min", "last"], "volume": "sum"}
         )
         ohlc.columns = ["open", "high", "low", "close", "volume"]
-        ohlc = ohlc.reset_index().set_index("timestamp").dropna()
-
-        # ohlc['Contract'] = ticker
-        ohlc = ohlc.reset_index()
+        ohlc = ohlc.reset_index().dropna()
         return ohlc
 
     def tick_df(self, ticker: str = None, strike: int = None, opt_type: str = None, expiry: str = None) -> pd.DataFrame:

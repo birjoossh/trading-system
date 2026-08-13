@@ -24,7 +24,6 @@ from unified_trading_platform.trading_core.data_models import (
     TickData,
     ManagedOrder,
     Order,
-    OrderAction,
 )
 from unified_trading_platform.trading_core.strategy_engine.config import load_strategy_config, StrategyConfig
 from unified_trading_platform.trading_core.strategy_engine.live_engine import UnifiedStrategyEngine, OrderSignal
@@ -249,7 +248,9 @@ class StrategyManager:
             try:
                 tick_data = self.tick_queue.get(timeout=1.0)
                 self._process_tick(tick_data)
-                self._should_exit()  ## check if this stop criteria is met
+                if self._should_exit():
+                    logger.info("Exit condition met; stopping tick processing")
+                    break
             except queue.Empty:
                 continue
             except Exception as e:
@@ -481,7 +482,7 @@ class StrategyManager:
             if signal:
                 # Update strategy engine
                 fill_info = {
-                    "action": "entry" if signal.action == OrderAction.BUY else "exit",
+                    "action": "exit" if signal.is_exit else "entry",
                     "timestamp": order.updated_at.isoformat(),
                     "price": order.avg_fill_price,
                     "underlying_price": self._get_current_underlying_price(),

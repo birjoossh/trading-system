@@ -26,18 +26,22 @@ from unified_trading_platform.trading_core.data_models import (
 class TradingSystem:
     """Main trading system class"""
 
-    def __init__(self, db_path: str = "trading_system2.db"):
+    def __init__(self, db_path: Optional[str] = None):
         # Initialize logger
         self.logger = get_logger(__name__)
 
         # Validate config upfront
         self._validate_config()
 
+        if db_path is None:
+            from unified_trading_platform.trading_core.config.config import settings
+
+            db_path = settings.get("database.path", "trading_system.db")
+
+        self.db_path = db_path
         self.data_manager = DataManager(db_path)
         self.order_manager = OrderManager(db_path)
         self.brokers = {}
-        self.strategies = {}
-        self.is_running = False
 
         # Set up order submission callback
         def log_order_submission(args: Dict[str, Any]) -> None:
@@ -135,9 +139,9 @@ class TradingSystem:
     def shutdown(self):
         """Shutdown the trading system"""
         self.logger.info("Shutting down trading system...")
-        
+
         # Stop event engine
-        if hasattr(self, 'event_engine'):
+        if hasattr(self, "event_engine"):
             self.event_engine.stop()
 
         for name, broker in self.brokers.items():
@@ -148,8 +152,14 @@ class TradingSystem:
                 self.logger.error(f"Error disconnecting from broker '{name}': {e}", exc_info=True)
 
         self.brokers.clear()
-        self.is_running = False
         self.logger.info("Trading system shutdown complete")
+
+    @staticmethod
+    def _make_contract(symbol: str, exchange: str, security_type, currency: str) -> Contract:
+        """Build a Contract, accepting the security type as an enum or its string value."""
+        if isinstance(security_type, str):
+            security_type = SecurityType(security_type.upper())
+        return Contract(symbol=symbol, security_type=security_type, exchange=exchange, currency=currency)
 
     def get_historical_data(
         self,
@@ -162,7 +172,7 @@ class TradingSystem:
         broker_name: Optional[str] = None,
     ) -> List[TickData]:
         """Get historical data for a symbol"""
-        contract = Contract(symbol=symbol, security_type=security_type, exchange=exchange, currency=currency)
+        contract = self._make_contract(symbol, exchange, security_type, currency)
 
         return self.data_manager.get_historical_data(contract, duration, bar_size, broker_name, False)
 
@@ -176,7 +186,7 @@ class TradingSystem:
         broker_name: Optional[str] = None,
     ) -> bool:
         """Subscribe to real-time market data"""
-        contract = Contract(symbol=symbol, security_type=security_type, exchange=exchange, currency=currency)
+        contract = self._make_contract(symbol, exchange, security_type, currency)
         
         # Create non-blocking producer callback
         def producer_callback(tick: TickData):
@@ -203,7 +213,7 @@ class TradingSystem:
         account: Optional[str] = None,
     ) -> str:
         """Submit a market order"""
-        contract = Contract(symbol=symbol, security_type=security_type, exchange=exchange, currency=currency)
+        contract = self._make_contract(symbol, exchange, security_type, currency)
 
         order = Order(
             action=OrderAction(action.upper()), quantity=quantity, order_type=OrderType.MARKET, account=account
@@ -225,7 +235,7 @@ class TradingSystem:
         account: Optional[str] = None,
     ) -> str:
         """Submit a limit order"""
-        contract = Contract(symbol=symbol, security_type=security_type, exchange=exchange, currency=currency)
+        contract = self._make_contract(symbol, exchange, security_type, currency)
 
         order = Order(
             action=OrderAction(action.upper()),
@@ -252,7 +262,7 @@ class TradingSystem:
         account: Optional[str] = None,
     ) -> str:
         """Submit a stop order"""
-        contract = Contract(symbol=symbol, security_type=security_type, exchange=exchange, currency=currency)
+        contract = self._make_contract(symbol, exchange, security_type, currency)
 
         order = Order(
             action=OrderAction(action.upper()),
@@ -269,46 +279,38 @@ class TradingSystem:
         """Cancel an order"""
         return self.order_manager.cancel_order(order_id)
 
+    @staticmethod
+    def _order_to_dict(order) -> Dict:
+        return {
+            "order_id": order.order_id,
+            "broker_order_id": order.broker_order_id,
+            "broker_name": order.broker_name,
+            "symbol": order.contract.symbol,
+            "exchange": order.contract.exchange,
+            "security_type": order.contract.security_type.value,
+            "currency": order.contract.currency,
+            "action": order.order.action.value,
+            "quantity": order.order.quantity,
+            "order_type": order.order.order_type.value,
+            "limit_price": order.order.limit_price,
+            "stop_price": order.order.stop_price,
+            "time_in_force": order.order.time_in_force,
+            "status": order.status.value,
+            "filled_quantity": order.filled_quantity,
+            "remaining_quantity": order.remaining_quantity,
+            "avg_fill_price": order.avg_fill_price,
+            "created_at": order.created_at,
+            "updated_at": order.updated_at,
+        }
+
     def get_order_status(self, order_id: str) -> Dict:
         """Get order status"""
         order = self.order_manager.get_order(order_id)
-        if order:
-            return {
-                "order_id": order.order_id,
-                "broker_order_id": order.broker_order_id,
-                "symbol": order.contract.symbol,
-                "action": order.order.action.value,
-                "quantity": order.order.quantity,
-                "order_type": order.order.order_type.value,
-                "status": order.status.value,
-                "filled_quantity": order.filled_quantity,
-                "remaining_quantity": order.remaining_quantity,
-                "avg_fill_price": order.avg_fill_price,
-                "created_at": order.created_at,
-                "updated_at": order.updated_at,
-            }
-        return {}
+        return self._order_to_dict(order) if order else {}
 
     def get_all_orders(self) -> List[Dict]:
         """Get all orders"""
-        orders = self.order_manager.get_orders()
-        return [
-            {
-                "order_id": order.order_id,
-                "broker_order_id": order.broker_order_id,
-                "symbol": order.contract.symbol,
-                "action": order.order.action.value,
-                "quantity": order.order.quantity,
-                "order_type": order.order.order_type.value,
-                "status": order.status.value,
-                "filled_quantity": order.filled_quantity,
-                "remaining_quantity": order.remaining_quantity,
-                "avg_fill_price": order.avg_fill_price,
-                "created_at": order.created_at,
-                "updated_at": order.updated_at,
-            }
-            for order in orders
-        ]
+        return [self._order_to_dict(order) for order in self.order_manager.get_orders()]
 
     def get_positions(self, broker_name: Optional[str] = None) -> List[Dict]:
         """Get current positions"""
@@ -335,18 +337,3 @@ class TradingSystem:
     ) -> List[Dict]:
         """Get trade history"""
         return self.order_manager.get_trade_history(symbol, start_date, end_date)
-
-    def shutdown(self):
-        """Shutdown the trading system"""
-        self.logger.info("Shutting down trading system...")
-
-        for name, broker in self.brokers.items():
-            try:
-                broker.disconnect()
-                self.logger.info(f"Disconnected from broker '{name}'")
-            except Exception as e:
-                self.logger.error(f"Error disconnecting from broker '{name}': {e}", exc_info=True)
-
-        self.brokers.clear()
-        self.is_running = False
-        self.logger.info("Trading system shutdown complete")

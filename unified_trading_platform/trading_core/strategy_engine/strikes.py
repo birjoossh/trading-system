@@ -92,6 +92,11 @@ def select_strike(chain: pd.DataFrame, option_type: str, atm_price: float, crite
     mode = (criteria.mode or "").upper()
     params = criteria.params or {}
 
+    # Chains may carry the option premium as "Close" (broker chains) or "price"
+    # (backtest/manager chains) — normalize to "Close", which the modes below use.
+    if "Close" not in chain.columns and "price" in chain.columns:
+        chain = chain.assign(Close=chain["price"])
+
     df = chain[chain["option_type"].str.upper() == option_type.upper()].copy()
     logger.debug("Option chain data: %s, option_type: %s", df.to_string(), option_type)
     if df.empty:
@@ -248,7 +253,9 @@ def select_strike(chain: pd.DataFrame, option_type: str, atm_price: float, crite
     if mode == "DELTA_RANGE":
         # Ensure Delta is available by computing IV/Delta if missing
         try:
-            expiry_dt = _infer_expiry_dt(chain, params)
+            if not exchange:
+                raise ValueError("DELTA_RANGE mode requires 'exchange' to be passed to select_strike()")
+            expiry_dt = _infer_expiry_dt(chain, params, exchange)
         except Exception as e:
             raise ValueError(f"DELTA_RANGE requires expiry: {e}")
         full = ensure_delta(

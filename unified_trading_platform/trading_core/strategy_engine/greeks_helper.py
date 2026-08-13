@@ -1,7 +1,6 @@
 from __future__ import annotations
 from dataclasses import dataclass
 from typing import Optional, Union
-import math
 from datetime import datetime
 import pandas as pd
 import numpy as np
