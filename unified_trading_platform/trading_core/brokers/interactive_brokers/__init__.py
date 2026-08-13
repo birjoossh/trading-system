@@ -5,4 +5,4 @@ This package contains the IBBroker implementation for live trading with Interact
 
 from .ib_broker import IBBroker
 
-__all__ = ['IBBroker']
+__all__ = ["IBBroker"]

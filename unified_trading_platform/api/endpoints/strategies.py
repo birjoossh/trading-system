@@ -4,8 +4,7 @@ Handles strategy initialization, execution, status, and portfolio management.
 """
 
 from fastapi import APIRouter, HTTPException
-from typing import Dict, Any, Optional
-from unified_trading_platform.runtime import get_trading_system
+from typing import Dict
 from unified_trading_platform.trading_core.strategy_engine.strategy_manager import (
     StrategyManager as StrategyManagerImpl,
 )
@@ -14,7 +13,6 @@ from ..models import (
     StrategyStatusResponse,
     PortfolioSummaryResponse,
     SuccessResponse,
-    ErrorResponse,
 )
 
 router = APIRouter()
@@ -26,9 +24,7 @@ _strategy_managers: Dict[str, StrategyManagerImpl] = {}
 def _get_strategy_manager(run_id: str) -> StrategyManagerImpl:
     """Get strategy manager by run_id"""
     if run_id not in _strategy_managers:
-        raise HTTPException(
-            status_code=404, detail=f"Strategy run '{run_id}' not found"
-        )
+        raise HTTPException(status_code=404, detail=f"Strategy run '{run_id}' not found")
     return _strategy_managers[run_id]
 
 
@@ -37,7 +33,8 @@ def initialize_strategy(req: StrategyInitializeRequest):
     """Initialize a strategy for execution"""
     try:
         manager = StrategyManagerImpl(
-            venue=req.venue,
+            broker_name=req.broker_name,
+            exchange=req.exchange,
             strategy_name=req.strategy_name,
             start_date=req.start_date,
             end_date=req.end_date,
@@ -56,7 +53,8 @@ def initialize_strategy(req: StrategyInitializeRequest):
             run_id=status.get("run_id"),
             is_running=status.get("is_running", False),
             is_initialized=status.get("is_initialized", False),
-            venue=status.get("venue"),
+            broker_name=status.get("broker_name"),
+            exchange=status.get("exchange"),
             strategy_name=status.get("strategy_name"),
             start_date=status.get("start_date"),
             end_date=status.get("end_date"),
@@ -77,9 +75,7 @@ def start_strategy(run_id: str):
         if success:
             return SuccessResponse(message=f"Strategy '{run_id}' started successfully")
         else:
-            raise HTTPException(
-                status_code=400, detail=f"Failed to start strategy '{run_id}'"
-            )
+            raise HTTPException(status_code=400, detail=f"Failed to start strategy '{run_id}'")
     except HTTPException:
         raise
     except Exception as e:
@@ -118,7 +114,8 @@ def get_strategy_status(run_id: str):
             run_id=status.get("run_id"),
             is_running=status.get("is_running", False),
             is_initialized=status.get("is_initialized", False),
-            venue=status.get("venue"),
+            broker_name=status.get("broker_name"),
+            exchange=status.get("exchange"),
             strategy_name=status.get("strategy_name"),
             start_date=status.get("start_date"),
             end_date=status.get("end_date"),
@@ -150,9 +147,7 @@ def get_portfolio_summary(run_id: str):
                         "qty": leg.qty,
                         "pnl": leg.pnl,
                         "entry_price": leg.entry_px,
-                        "entry_timestamp": (
-                            leg.entry_ts.isoformat() if leg.entry_ts else None
-                        ),
+                        "entry_timestamp": (leg.entry_ts.isoformat() if leg.entry_ts else None),
                     }
                 )
 

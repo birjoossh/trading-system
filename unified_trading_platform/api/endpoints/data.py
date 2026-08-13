@@ -4,18 +4,14 @@ Handles historical data, real-time data subscriptions, and option chains.
 """
 
 from fastapi import APIRouter, HTTPException
-from typing import List
-from datetime import datetime
-import pandas as pd
-from unified_trading_platform.runtime import get_trading_system
-from unified_trading_platform.trading_core.brokers.base_broker import OptionChain
+from unified_trading_platform.api.runtime import get_trading_system
+from unified_trading_platform.trading_core.data_models import Contract, SecurityType
 from ..models import (
     HistoricalDataRequest,
     HistoricalDataResponse,
     OptionChainRequest,
     MarketDataSubscriptionRequest,
     MarketDataSubscriptionResponse,
-    ErrorResponse,
     OptionChainResponse,
 )
 
@@ -46,12 +42,8 @@ def get_option_chain(req: OptionChainRequest):
     """Get option chain for an underlying symbol"""
     ts = get_trading_system()
     try:
-        from unified_trading_platform.trading_core.brokers.base_broker import Contract
-
         contract = Contract(
-            symbol=req.symbol,
-            exchange=req.exchange,
-            expiry=req.expiry
+            symbol=req.symbol, exchange=req.exchange, security_type=SecurityType.STOCK, expiry=req.expiry
         )
         option_chain = ts.get_option_chain(req.broker_name, contract)
         return OptionChainResponse.from_domain(option_chain)
@@ -64,11 +56,6 @@ def subscribe_market_data(req: MarketDataSubscriptionRequest):
     """Subscribe to real-time market data"""
     ts = get_trading_system()
     try:
-        from unified_trading_platform.trading_core.brokers.base_broker import (
-            Contract,
-            SecurityType,
-        )
-
         # Convert security_type string to enum if needed
         sec_type = (
             SecurityType[req.security_type.upper()]
@@ -76,15 +63,6 @@ def subscribe_market_data(req: MarketDataSubscriptionRequest):
             else SecurityType.STOCK
         )
 
-        contract = Contract(
-            symbol=req.symbol,
-            security_type=sec_type,
-            exchange=req.exchange,
-            currency=req.currency,
-        )
-
-        # For now, subscription returns bool. In future, it should return subscription_id
-        # This is a placeholder implementation
         subscription_id = ts.subscribe_market_data(
             symbol=req.symbol,
             exchange=req.exchange,

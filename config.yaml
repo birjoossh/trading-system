@@ -1,0 +1,118 @@
+# Unified Configuration for Trading Platform
+
+# ==========================================
+# SYSTEM (Runtime / User Configurable)
+# ==========================================
+system:
+  max_concurrent_orders: 100
+  order_timeout: 30
+  data_cache_ttl: 300
+  default_exchange: "NSE"
+
+exchanges:
+  NSE:
+    currency: "INR"
+    timezone: "Asia/Kolkata"
+    trading_hours:
+      start: "09:15"
+      end: "15:30"
+    expiry:
+      switch_date: "2025-09-01"
+      weekly_day_before: 3 # Thursday
+      weekly_day_after: 1  # Tuesday
+  NYSE:
+    currency: "USD"
+    timezone: "America/New_York"
+    trading_hours:
+      start: "09:30"
+      end: "16:00"
+    expiry:
+      weekly_day: 4 # Friday (0=Mon, 4=Fri)
+
+logging:
+  level: "INFO"
+  file: "trading_core.log"
+  console: true
+
+database:
+  path: "trading_system.db"
+  # Support future SQL backends if needed
+  type: "sqlite" 
+
+# ==========================================
+# BROKERS (Runtime / Connection Details)
+# ==========================================
+brokers:
+  interactive_brokers:
+    enabled: true
+    host: "127.0.0.1"
+    port: 4002  # TWS Live: 7496, Paper: 7497; Gateway Live: 4001, Paper: 4002
+    client_id: 1
+    timeout: 10
+  
+  paper_broker:
+    enabled: true
+    data_dir: "data/paper"
+
+# ==========================================
+# API Metadata (Static)
+# ==========================================
+api:
+  title: "Unified Trading Platform API"
+  version: "0.1.0"
+  description: |
+    ## Unified Trading Platform API
+
+    A comprehensive REST API for algorithmic trading across multiple brokers.
+
+    ### Features
+
+    * **Broker Management**: Connect and manage multiple broker connections
+    * **Market Data**: Retrieve historical data and option chains
+    * **Order Execution**: Submit and manage orders (market, limit, stop) 
+    * **Strategy Execution**: Run and monitor algorithmic trading strategies
+    * **Portfolio Tracking**: Monitor positions and portfolio performance
+
+    ### Authentication
+
+    Currently, the API does not require authentication. In production, implement proper security measures.
+  
+  terms_of_service: "https://example.com/terms/"
+  contact:
+    name: "API Support"
+    url: "https://example.com/contact/"
+    email: "support@example.com"
+  license:
+    name: "MIT"
+    url: "https://opensource.org/licenses/MIT"
+  openapi_url: "/api/v1/openapi.json"
+  docs_url: "/docs"
+  redoc_url: "/redoc"
+  logo_url: "https://fastapi.tiangolo.com/img/logo-margin/logo-teal.png"
+
+# ==========================================
+# DEFAULTS (Static Framework Defaults)
+# ==========================================
+defaults:
+  contract:
+    security_type: "STK"
+    currency: "USD"
+    exchange: "SMART"
+    time_in_force: "DAY"
+  
+  data:
+    duration: "1 D"
+    bar_size: "1 hour"
+    market_data_type: "DELAYED"
+    snapshot: false
+  
+  strategy:
+    status: "INITIAL"
+    db_path: "trading_system.db"
+    
+  portfolio:
+    total_pnl: 0.0
+    open_positions: 0
+    closed_positions: 0
+    total_positions: 0
+    pending_reentries: 0

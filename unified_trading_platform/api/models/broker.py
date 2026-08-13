@@ -5,7 +5,7 @@ Handles broker connection and account information.
 
 from typing import Optional, Dict, Any
 from pydantic import BaseModel, Field, ConfigDict
-from unified_trading_platform.api.config import get_config_value
+from unified_trading_platform.trading_core.config.config import settings
 
 
 class AddBrokerRequest(BaseModel):
@@ -31,17 +31,17 @@ class AddBrokerRequest(BaseModel):
         examples=["interactive_brokers", "paper_broker"],
     )
     host: str = Field(
-        default_factory=lambda: get_config_value("broker.default_host", "127.0.0.1"),
+        default_factory=lambda: settings.get("brokers.interactive_brokers.host", "127.0.0.1"),
         description="Broker host address",
         examples=["127.0.0.1"],
     )
     port: int = Field(
-        default_factory=lambda: get_config_value("broker.default_port", 7498),
+        default_factory=lambda: settings.get("brokers.interactive_brokers.port", 7498),
         description="Broker port",
         examples=[7497, 7498, 4002],
     )
     client_id: int = Field(
-        default_factory=lambda: get_config_value("broker.default_client_id", 1),
+        default_factory=lambda: settings.get("brokers.interactive_brokers.client_id", 1),
         description="Client ID for connection",
         examples=[1, 2, 3],
     )
@@ -96,17 +96,9 @@ class AccountInfo(BaseModel):
 
     broker_name: str = Field(..., description="Name of the broker")
     account_id: Optional[str] = Field(None, description="Account identifier")
-    cash_balance: Optional[float] = Field(
-        None, description="Cash balance in the account"
-    )
+    cash_balance: Optional[float] = Field(None, description="Cash balance in the account")
     buying_power: Optional[float] = Field(None, description="Buying power available")
-    total_value: Optional[float] = Field(
-        None, description="Total account value including positions"
-    )
+    total_value: Optional[float] = Field(None, description="Total account value including positions")
     equity: Optional[float] = Field(None, description="Account equity")
-    margin_available: Optional[float] = Field(
-        None, description="Available margin for trading"
-    )
-    info: Optional[Dict[str, Any]] = Field(
-        None, description="Additional account details"
-    )
+    margin_available: Optional[float] = Field(None, description="Available margin for trading")
+    info: Optional[Dict[str, Any]] = Field(None, description="Additional account details")

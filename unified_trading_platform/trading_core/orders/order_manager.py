@@ -3,19 +3,18 @@ Order manager for handling trade orders across multiple brokers.
 Provides unified interface for order submission, tracking, and management.
 """
 
-from typing import Dict, List, Optional, Any, Callable
+from typing import Dict, List, Optional, Callable
 from datetime import datetime
 import uuid
 import sqlite3
 
 from unified_trading_platform.trading_core.utils import get_logger
-from unified_trading_platform.trading_core.data_models import (
-    OrderStatus, ManagedOrder, Contract, Order, Trade
-)
+from unified_trading_platform.trading_core.data_models import OrderStatus, ManagedOrder, Contract, Order, Trade
 from unified_trading_platform.trading_core.brokers.base_broker import BrokerInterface
 
 # Initialize logger
 logger = get_logger(__name__)
+
 
 class OrderManager:
     """Manages orders across multiple brokers"""
@@ -25,11 +24,11 @@ class OrderManager:
         self.brokers: Dict[str, BrokerInterface] = {}
         self.orders: Dict[str, ManagedOrder] = {}
         self.callbacks: Dict[str, List[Callable]] = {
-            'order_submitted': [],
-            'order_filled': [],
-            'order_cancelled': [],
-            'order_rejected': [],
-            'trade_executed': []
+            "order_submitted": [],
+            "order_filled": [],
+            "order_cancelled": [],
+            "order_rejected": [],
+            "trade_executed": [],
         }
         self._init_database()
 
@@ -66,7 +65,7 @@ class OrderManager:
                         metadata TEXT
                     )
                 """)
-                
+
                 # Create trades table
                 conn.execute("""
                     CREATE TABLE IF NOT EXISTS trades (
@@ -94,8 +93,8 @@ class OrderManager:
         self.brokers[name] = broker
 
         # Register callbacks for broker events
-        broker.register_callback('order_status', self._on_order_status)
-        broker.register_callback('trade_execution', self._on_trade_execution)
+        broker.register_callback("order_status", self._on_order_status)
+        broker.register_callback("trade_execution", self._on_trade_execution)
 
     def submit_order(self, contract: Contract, order: Order, broker_name: str) -> str:
         """Submit an order through specified broker"""
@@ -115,7 +114,7 @@ class OrderManager:
             status=OrderStatus.PENDING,
             created_at=datetime.now(),
             updated_at=datetime.now(),
-            remaining_quantity=order.quantity
+            remaining_quantity=order.quantity,
         )
 
         try:
@@ -129,7 +128,7 @@ class OrderManager:
             self._save_order(managed_order)
 
             # Trigger callbacks
-            self._trigger_callbacks('order_submitted', managed_order)
+            self._trigger_callbacks("order_submitted", managed_order)
 
             return order_id
 
@@ -138,7 +137,7 @@ class OrderManager:
             self.orders[order_id] = managed_order
             self._save_order(managed_order)
 
-            self._trigger_callbacks('order_rejected', managed_order)
+            self._trigger_callbacks("order_rejected", managed_order)
             raise e
 
     def cancel_order(self, order_id: str, broker_name: Optional[str] = None) -> bool:
@@ -173,8 +172,7 @@ class OrderManager:
         """Get order by ID"""
         return self.orders.get(order_id)
 
-    def get_orders(self, status: Optional[OrderStatus] = None,
-                   broker_name: Optional[str] = None) -> List[ManagedOrder]:
+    def get_orders(self, status: Optional[OrderStatus] = None, broker_name: Optional[str] = None) -> List[ManagedOrder]:
         """Get orders with optional filtering"""
         orders = list(self.orders.values())
 
@@ -220,10 +218,10 @@ class OrderManager:
 
         # Update order status
         old_status = managed_order.status
-        managed_order.status = order_info.get('status', managed_order.status)
-        managed_order.filled_quantity = order_info.get('filled', 0)
-        managed_order.remaining_quantity = order_info.get('remaining', managed_order.remaining_quantity)
-        managed_order.avg_fill_price = order_info.get('avg_fill_price', 0.0)
+        managed_order.status = order_info.get("status", managed_order.status)
+        managed_order.filled_quantity = order_info.get("filled", 0)
+        managed_order.remaining_quantity = order_info.get("remaining", managed_order.remaining_quantity)
+        managed_order.avg_fill_price = order_info.get("avg_fill_price", 0.0)
         managed_order.updated_at = datetime.now()
 
         # Save updates
@@ -232,9 +230,9 @@ class OrderManager:
         # Trigger appropriate callback
         if old_status != managed_order.status:
             if managed_order.status == OrderStatus.FILLED:
-                self._trigger_callbacks('order_filled', managed_order)
+                self._trigger_callbacks("order_filled", managed_order)
             elif managed_order.status == OrderStatus.CANCELLED:
-                self._trigger_callbacks('order_cancelled', managed_order)
+                self._trigger_callbacks("order_cancelled", managed_order)
 
     def _on_trade_execution(self, trade: Trade):
         """Handle trade execution from broker"""
@@ -248,13 +246,14 @@ class OrderManager:
         if managed_order:
             managed_order.trades.append(trade)
             self._save_trade(trade, managed_order.order_id)
-            self._trigger_callbacks('trade_executed', trade)
+            self._trigger_callbacks("trade_executed", trade)
 
     def _save_order(self, order: ManagedOrder):
         """Save order to database"""
         logger.debug(f"Saving order {order.order_id} to database")
         with sqlite3.connect(self.db_path) as conn:
-            conn.execute("""
+            conn.execute(
+                """
                 INSERT OR REPLACE INTO orders 
                 (order_id, broker_order_id, broker_name, symbol, exchange, 
                  security_type, currency, action, quantity, order_type, 
@@ -262,58 +261,62 @@ class OrderManager:
                  filled_quantity, remaining_quantity, avg_fill_price, 
                  commission, created_at, updated_at)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (
-                order.order_id,
-                order.broker_order_id,
-                order.broker_name,
-                order.contract.symbol,
-                order.contract.exchange,
-                order.contract.security_type,
-                order.contract.currency,
-                order.order.action.value,
-                order.order.quantity,
-                order.order.order_type.value,
-                order.order.limit_price,
-                order.order.stop_price,
-                order.order.time_in_force,
-                order.status.value,
-                order.filled_quantity,
-                order.remaining_quantity,
-                order.avg_fill_price,
-                order.commission,
-                order.created_at.isoformat(),
-                order.updated_at.isoformat()
-            ))
+            """,
+                (
+                    order.order_id,
+                    order.broker_order_id,
+                    order.broker_name,
+                    order.contract.symbol,
+                    order.contract.exchange,
+                    order.contract.security_type.value,
+                    order.contract.currency,
+                    order.order.action.value,
+                    order.order.quantity,
+                    order.order.order_type.value,
+                    order.order.limit_price,
+                    order.order.stop_price,
+                    order.order.time_in_force,
+                    order.status.value,
+                    order.filled_quantity,
+                    order.remaining_quantity,
+                    order.avg_fill_price,
+                    order.commission,
+                    order.created_at.isoformat(),
+                    order.updated_at.isoformat(),
+                ),
+            )
 
     def _save_trade(self, trade: Trade, order_id: str):
         """Save trade to database"""
-        trade_id = str(uuid.uuid4())
+        trade_id = trade.trade_id or str(uuid.uuid4())
 
         with sqlite3.connect(self.db_path) as conn:
-            conn.execute("""
-                INSERT OR REPLACE INTO trades 
-                (trade_id, order_id, broker_trade_id, execution_id, symbol, 
-                 quantity, price, timestamp, side, commission)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (
-                trade_id,
-                order_id,
-                trade.order_id,
-                trade.execution_id,
-                trade.contract.symbol,
-                trade.quantity,
-                trade.price,
-                trade.timestamp.isoformat(),
-                trade.side.value,
-                trade.commission
-            ))
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO trades
+                (trade_id, order_id, broker_trade_id, execution_id,
+                 quantity, price, commission, timestamp, exchange)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+                (
+                    trade_id,
+                    order_id,
+                    trade.order_id,
+                    trade.execution_id,
+                    trade.quantity,
+                    trade.price,
+                    trade.commission,
+                    trade.timestamp.isoformat(),
+                    trade.contract.exchange,
+                ),
+            )
 
     def _trigger_callbacks(self, event_type: str, *args, **kwargs):
         """Trigger all callbacks for an event"""
         callbacks = self.callbacks.get(event_type, [])
         if not callbacks:
             return
-            
+
         logger.debug(f"Triggering {len(callbacks)} callbacks for event: {event_type}")
         for callback in callbacks:
             try:
@@ -321,9 +324,9 @@ class OrderManager:
             except Exception as e:
                 logger.error(f"Error in {event_type} callback: {e}", exc_info=True)
 
-    def get_order_history(self, symbol: Optional[str] = None,
-                         start_date: Optional[datetime] = None,
-                         end_date: Optional[datetime] = None) -> List[Dict]:
+    def get_order_history(
+        self, symbol: Optional[str] = None, start_date: Optional[datetime] = None, end_date: Optional[datetime] = None
+    ) -> List[Dict]:
         """Get order history with optional filtering"""
         query = "SELECT * FROM orders WHERE 1=1"
         params = []
@@ -352,9 +355,9 @@ class OrderManager:
 
         return results
 
-    def get_trade_history(self, symbol: Optional[str] = None,
-                         start_date: Optional[datetime] = None,
-                         end_date: Optional[datetime] = None) -> List[Dict]:
+    def get_trade_history(
+        self, symbol: Optional[str] = None, start_date: Optional[datetime] = None, end_date: Optional[datetime] = None
+    ) -> List[Dict]:
         """Get trade history with optional filtering"""
         query = "SELECT * FROM trades WHERE 1=1"
         params = []

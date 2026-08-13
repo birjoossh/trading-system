@@ -79,7 +79,7 @@ Manages order submission, cancellation, status checking, and positions.
 Manages strategy initialization, execution, status, and portfolio tracking.
 
 - `POST /strategies/initialize` - Initialize a strategy for execution
-  - Body: `StrategyInitializeRequest` (venue, strategy_name, start_date, end_date, db_path)
+  - Body: `StrategyInitializeRequest` (broker_name, exchange, strategy_name, start_date, end_date, db_path)
   - Returns: `StrategyStatusResponse` with run_id
 - `POST /strategies/{run_id}/start` - Start strategy execution
 - `POST /strategies/{run_id}/stop` - Stop strategy execution
@@ -139,7 +139,8 @@ Manages strategy initialization, execution, status, and portfolio tracking.
 curl -X POST "http://localhost:8000/strategies/initialize" \
   -H "Content-Type: application/json" \
   -d '{
-    "venue": "interactive_brokers",
+    "broker_name": "interactive_brokers",
+    "exchange": "NYSE",
     "strategy_name": "atm_short_straddle",
     "start_date": null,
     "end_date": null,

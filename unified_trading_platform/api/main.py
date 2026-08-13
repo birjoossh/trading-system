@@ -12,25 +12,20 @@ from unified_trading_platform.api.endpoints.orders import router as orders_route
 from unified_trading_platform.api.endpoints.strategies import (
     router as strategies_router,
 )
-from unified_trading_platform.api.config import load_config, get_config_value
+from unified_trading_platform.trading_core.config.config import settings
 
-# Load configuration from YAML file
-config = load_config()
-
-# Get API metadata from config
-api_title = get_config_value("api.title", "Unified Trading Platform API")
-api_version = get_config_value("api.version", "0.1.0")
-api_description = get_config_value("api.description", "")
-api_terms = get_config_value("api.terms_of_service", "")
-api_contact = get_config_value("api.contact", {})
-api_license = get_config_value("api.license", {})
-openapi_url = get_config_value("api.openapi_url", "/api/v1/openapi.json")
-docs_url = get_config_value("api.docs_url", "/docs")
-redoc_url = get_config_value("api.redoc_url", "/redoc")
-logo_url = get_config_value("api.logo_url", "")
-
-# Get tags metadata from config
-tags_metadata = get_config_value("tags", [])
+# API metadata comes from config.yaml's `api` section
+api_title = settings.get("api.title", "Unified Trading Platform API")
+api_version = settings.get("api.version", "0.1.0")
+api_description = settings.get("api.description", "")
+api_terms = settings.get("api.terms_of_service", "")
+api_contact = settings.get("api.contact", {})
+api_license = settings.get("api.license", {})
+openapi_url = settings.get("api.openapi_url", "/api/v1/openapi.json")
+docs_url = settings.get("api.docs_url", "/docs")
+redoc_url = settings.get("api.redoc_url", "/redoc")
+logo_url = settings.get("api.logo_url", "")
+tags_metadata = settings.get("api.tags", [])
 
 app = FastAPI(
     title=api_title,

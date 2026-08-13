@@ -5,32 +5,24 @@ Handles contract specifications for trading instruments.
 
 from typing import Optional
 from pydantic import BaseModel, Field
-from unified_trading_platform.api.config import get_config_value
+from unified_trading_platform.trading_core.config.config import settings
 
 
 class ContractRequest(BaseModel):
     """Contract specification for requests"""
 
     symbol: str
-    exchange: str = Field(
-        default_factory=lambda: get_config_value("contract.default_exchange", "")
-    )
+    exchange: str = Field(default_factory=lambda: settings.get("defaults.contract.exchange", ""))
     security_type: str = Field(
-        default_factory=lambda: get_config_value(
-            "contract.default_security_type", "STK"
-        ),
+        default_factory=lambda: settings.get("defaults.contract.security_type", "STK"),
         description="STK, OPT, FUT, etc.",
     )
     currency: str = Field(
-        default_factory=lambda: get_config_value("contract.default_currency", "USD"),
+        default_factory=lambda: settings.get("defaults.contract.currency", "USD"),
         description="Currency code",
     )
-    expiry: Optional[str] = Field(
-        default=None, description="Expiry date for options/futures (YYYYMMDD)"
-    )
-    strike: Optional[float] = Field(
-        default=None, description="Strike price for options"
-    )
+    expiry: Optional[str] = Field(default=None, description="Expiry date for options/futures (YYYYMMDD)")
+    strike: Optional[float] = Field(default=None, description="Strike price for options")
     right: Optional[str] = Field(default=None, description="PUT or CALL for options")
     multiplier: Optional[str] = Field(default=None, description="Contract multiplier")
 

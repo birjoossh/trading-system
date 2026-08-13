@@ -18,6 +18,7 @@ from unified_trading_platform.trading_core.data_models.greeks import Greeks
 # Initialize logger
 logger = get_logger(__name__)
 
+
 class BrokerInterface(ABC):
     """Abstract base class for all broker implementations"""
 
@@ -37,8 +38,9 @@ class BrokerInterface(ABC):
         pass
 
     @abstractmethod
-    def get_historical_data(self, contract: Contract, duration: str,
-                          bar_size: str, what_to_show: str = "TRADES") -> List[TickData]:
+    def get_historical_data(
+        self, contract: Contract, duration: str, bar_size: str, what_to_show: str = "TRADES"
+    ) -> List[TickData]:
         """Get historical bar data"""
         pass
 
@@ -73,10 +75,15 @@ class BrokerInterface(ABC):
         pass
 
     @abstractmethod
-    def subscribe_market_data(self, contract: Contract, callback: Callable, 
-                             market_data_type: MarketDataType = MarketDataType.DELAYED,
-                             snapshot: bool = False, regulatory_snapshot: bool = False,
-                             generic_tick_list: Optional[List[str]] = None) -> str:
+    def subscribe_market_data(
+        self,
+        contract: Contract,
+        callback: Callable,
+        market_data_type: MarketDataType = MarketDataType.DELAYED,
+        snapshot: bool = False,
+        regulatory_snapshot: bool = False,
+        generic_tick_list: Optional[List[str]] = None,
+    ) -> str:
         """Subscribe to real-time market data and return subscription ID"""
         pass
 

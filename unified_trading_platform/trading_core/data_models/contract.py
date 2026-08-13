@@ -4,14 +4,16 @@ Contract data model.
 This module defines the Contract class which represents a financial instrument.
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Optional, Dict, Any
 from .option_right_enum import OptionRight
 from .security_type_enum import SecurityType
 
+
 @dataclass
 class Contract:
     """Represents a financial instrument contract."""
+
     symbol: str
     exchange: str
     security_type: SecurityType
@@ -28,21 +30,21 @@ class Contract:
     def to_dict(self) -> Dict[str, Any]:
         """Convert the contract to a dictionary."""
         return {
-            'symbol': self.symbol,
-            'exchange': self.exchange,
-            'security_type': self.security_type.value,
-            'currency': self.currency,
-            'local_symbol': self.local_symbol,
-            'expiry': self.expiry,
-            'strike': self.strike,
-            'right': self.right,
-            'multiplier': self.multiplier,
-            'primary_exchange': self.primary_exchange,
-            'include_expired': self.include_expired,
-            'conId': self.conId
+            "symbol": self.symbol,
+            "exchange": self.exchange,
+            "security_type": self.security_type.value,
+            "currency": self.currency,
+            "local_symbol": self.local_symbol,
+            "expiry": self.expiry,
+            "strike": self.strike,
+            "option_right": self.option_right.value if self.option_right else None,
+            "multiplier": self.multiplier,
+            "primary_exchange": self.primary_exchange,
+            "include_expired": self.include_expired,
+            "conId": self.conId,
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'Contract':
+    def from_dict(cls, data: Dict[str, Any]) -> "Contract":
         """Create a Contract instance from a dictionary."""
         return cls(**data)

@@ -6,7 +6,7 @@ Handles order submission, cancellation, status checking, and position management
 from fastapi import APIRouter, HTTPException
 from typing import List, Optional
 from datetime import datetime
-from unified_trading_platform.runtime import get_trading_system
+from unified_trading_platform.api.runtime import get_trading_system
 from ..models import (
     MarketOrderRequest,
     LimitOrderRequest,
@@ -101,17 +101,7 @@ def submit_stop_order(req: StopOrderRequest):
 @router.post("/stop-limit", response_model=OrderResponse)
 def submit_stop_limit_order(req: StopLimitOrderRequest):
     """Submit a stop-limit order"""
-    ts = get_trading_system()
-    try:
-        # Note: TradingSystem may not have stop_limit_order method yet
-        # This is a placeholder that can be implemented when needed
-        raise HTTPException(
-            status_code=501, detail="Stop-limit orders not yet implemented"
-        )
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    raise HTTPException(status_code=501, detail="Stop-limit orders not yet implemented")
 
 
 @router.delete("/{order_id}", response_model=SuccessResponse)
@@ -123,9 +113,7 @@ def cancel_order(order_id: str):
         if success:
             return SuccessResponse(message=f"Order '{order_id}' cancelled successfully")
         else:
-            raise HTTPException(
-                status_code=400, detail=f"Failed to cancel order '{order_id}'"
-            )
+            raise HTTPException(status_code=400, detail=f"Failed to cancel order '{order_id}'")
     except HTTPException:
         raise
     except Exception as e:

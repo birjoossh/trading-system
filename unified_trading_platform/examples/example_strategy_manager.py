@@ -8,21 +8,24 @@ from unified_trading_platform.trading_core.utils import get_logger
 # Initialize logger
 logger = get_logger(__name__)
 
+
 def live_trading_example():
     """Example of live trading with StrategyManager"""
     logger.info("=== Live Trading Example ===")
-    
-    paper_config = {
-        "h5_path": "/Users/birjoossh/PycharmProjects/trading-system/unified_trading_platform/examples/2024-01-02.h5"
-    }
+
+    import os
+
+    h5_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "2024-01-02.h5")
+    paper_config = {"h5_path": h5_path}
     # Create strategy manager for live trading
     manager = StrategyManager(
-        venue="paper",  # Use paper trading broker
+        broker_name="paper",  # Use paper trading broker
+        exchange="NSE",       # Trade on NSE
         strategy_name="atm_short_straddle_1100_1515",
         start_date="2024-01-01",
-        end_date="2024-12-31"
+        end_date="2024-12-31",
     )
-    
+
     try:
         # Initialize the manager
         logger.info("Initializing strategy manager...")
@@ -30,18 +33,20 @@ def live_trading_example():
             logger.info("✓ Strategy manager initialized successfully")
             logger.info(f"Run ID: {manager.run_id}")
             logger.info(f"Strategy: {manager.strategy_name}")
-            logger.info(f"Venue: {manager.venue}")
+            logger.info(f"Broker: {manager.broker_name}")
+            logger.info(f"Exchange: {manager.exchange}")
         else:
             logger.error("✗ Failed to initialize strategy manager")
             return
-        
+
         # Start live trading
         logger.info("Starting ..........")
         if manager.start():
             # Let it run for a while (in real usage, this would be until exit_time)
             import time
-            time.sleep(1000)  # Run for 10 seconds as example
-            
+
+            time.sleep(5)  # Run for 10 seconds as example
+
             # Stop trading
             logger.info("Stopping trading...")
             manager.stop()
@@ -53,22 +58,30 @@ def live_trading_example():
         logger.error(f"Error in live trading: {e}", exc_info=True)
         manager.stop()
 
+
 def backtesting_example():
     """Example of backtesting with StrategyManager"""
     logger.info("\n=== Backtesting Example ===")
-    
+
     # Create strategy manager for backtesting
     manager = StrategyManager(
-        venue="paper",  # Use paper trading broker
+        broker_name="paper",  # Use paper trading broker
+        exchange="NSE",       # Trade on NSE
         strategy_name="atm_short_straddle_1100_1515",
         start_date="2024-01-01",
-        end_date="2024-01-31"
+        end_date="2024-01-31",
     )
-    
+
+    # Config for backtesting
+    import os
+
+    h5_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "2024-01-02.h5")
+    paper_config = {"h5_path": h5_path}
+
     try:
         # Initialize the manager
         logger.info("Initializing strategy manager for backtesting...")
-        if manager.initialize():
+        if manager.initialize(paper_config):
             logger.info("✓ Strategy manager initialized successfully")
             logger.info(f"Run ID: {manager.run_id}")
             logger.info(f"Strategy: {manager.strategy_name}")
@@ -76,48 +89,47 @@ def backtesting_example():
         else:
             logger.error("✗ Failed to initialize strategy manager")
             return
-        
+
         # Start backtesting
-        # print("Starting backtesting...")
-        # if manager.start():
-        #     print("✓ Backtesting completed")
-            
-        #     # Get portfolio summary
-        #     portfolio_summary = manager.get_portfolio_summary()
-        #     print(f"Portfolio Summary: {portfolio_summary}")
-        # else:
-        #     print("✗ Failed to start backtesting")
-    
+        logger.info("Starting backtesting...")
+        if manager.start():
+            logger.info("✓ Backtesting completed")
+
+            # Get portfolio summary
+            portfolio_summary = manager.get_portfolio_summary()
+            logger.info(f"Portfolio Summary: {portfolio_summary}")
+        else:
+            logger.error("✗ Failed to start backtesting")
+
     except Exception as e:
         logger.error(f"Error in backtesting: {e}", exc_info=True)
         manager.stop()
 
+
 def check_strategy_status():
     """Example of checking strategy status"""
     logger.info("\n=== Strategy Status Check ===")
-    
+
     # This would typically be used to check status of a running strategy
-    manager = StrategyManager(
-        venue="paper",
-        strategy_name="atm_short_straddle_1100_1515"
-    )
-    
+    manager = StrategyManager(broker_name="paper", exchange="NSE", strategy_name="atm_short_straddle_1100_1515")
+
     # Get status information
     status = manager.get_status()
     logger.info(f"Strategy Status: {status}")
-    
+
     # Get portfolio summary
     portfolio = manager.get_portfolio_summary()
     logger.info(f"Portfolio: {portfolio}")
 
+
 if __name__ == "__main__":
     logger.info("Strategy Manager Examples")
     logger.info("=" * 50)
-    
+
     # Run examples
-    live_trading_example()
-    # backtesting_example()
+    # live_trading_example()
+    backtesting_example()
     # check_strategy_status()
-    
+
     logger.info("\n" + "=" * 50)
     logger.info("Examples completed!")

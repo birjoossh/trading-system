@@ -1,97 +1,62 @@
-# Strategy Engine Implementation
+# Strategy Engine
 
-This directory contains the unified strategy engine implementation that supports both live trading and backtesting through a tick-by-tick processing pipeline.
+Unified strategy engine supporting both live trading and backtesting through a tick-by-tick processing pipeline.
 
-## Architecture Overview
+## Module Structure
 
-The strategy engine consists of several key components:
+| File | Purpose |
+|------|---------|
+| `strategy_manager.py` | Top-level orchestrator — broker setup, market data, order routing, DB logging |
+| `live_engine.py` | Core `UnifiedStrategyEngine` — tick processing, entry/exit logic, position state |
+| `config.py` | `StrategyConfig` dataclass + `load_strategy_config()` JSON loader |
+| `strikes.py` | Strike selection (ATM, OTM, closest-premium, delta-based) |
+| `strategy_utils.py` | Expiry resolution helpers (weekly, monthly, next-weekly, etc.) |
+| `greeks_helper.py` | Black-Scholes pricing and Greeks (scalar + vectorized) |
 
-### 1. StrategyManager
-The main orchestrator that coordinates all components:
-- **Initialization**: Loads strategy config, connects to broker, sets up database
-- **Execution**: Manages tick processing, order submission, and portfolio tracking
-- **State Management**: Tracks run status, portfolio, and PnL
-
-### 2. UnifiedStrategyEngine
-The core strategy logic engine:
-- **Tick Processing**: Evaluates buy/sell signals on each tick
-- **Risk Management**: Implements stop-loss, take-profit, and trailing stops
-- **Re-entry Logic**: Handles position re-entries based on strategy rules
-- **Position Tracking**: Maintains state of all open and closed positions
-
-### 3. Database Integration
-Three main tables for tracking:
-- **RUN_CONFIG**: Strategy run configuration and status
-- **PORTFOLIO**: Portfolio snapshots over time
-- **STRATEGY_PROFIT_LOSS**: PnL tracking and performance metrics
-
-## Key Features
-
-### Unified Processing
-- Single engine handles both live and historical data
-- Tick-by-tick processing for accurate strategy evaluation
-- Queue-based architecture for handling high-frequency data
-
-### Risk Management
-- Configurable stop-loss and take-profit rules
-- Trailing stop functionality
-- Re-entry logic with multiple modes (ASAP, COST, MOMENTUM)
-- Position sizing and lot management
-
-### Strategy Configuration
-- JSON-based strategy definitions
-- Support for complex multi-leg strategies
-- Flexible strike selection criteria
-- Customizable risk parameters
-
-### Broker Integration
-- Unified interface across multiple brokers
-- Real-time market data subscription
-- Historical data fetching for backtesting
-- Order management and execution
-
-## Usage Examples
+## Usage
 
 ### Live Trading
 ```python
 from unified_trading_platform.trading_core.strategy_engine.strategy_manager import StrategyManager
 
-# Create strategy manager
 manager = StrategyManager(
-    venue="paper",  # or "ib", "alpaca", etc.
+    broker_name="paper",   # broker connection (paper, ib, alpaca, etc.)
+    exchange="NSE",        # exchange to trade on (NSE, NYSE, BSE, etc.)
     strategy_name="atm_short_straddle_1100_1515"
 )
 
-# Initialize and start
 manager.initialize()
-manager.start()  # Runs until exit_time or manual stop
+manager.start()         # runs until exit_time or manual stop
 
-# Check status
 status = manager.get_status()
 portfolio = manager.get_portfolio_summary()
 ```
 
 ### Backtesting
 ```python
-# Historical backtesting
 manager = StrategyManager(
-    venue="paper",
+    broker_name="paper",
+    exchange="NSE",
     strategy_name="atm_short_straddle_1100_1515",
     start_date="2024-01-01",
     end_date="2024-01-31"
 )
 
 manager.initialize()
-manager.start()  # Processes all historical data
+manager.start()         # processes all historical data
 ```
+
+> **Note:** `broker_name` and `exchange` are separate concepts — `broker_name` selects the connection method, `exchange` selects the trading market. A single broker can connect to multiple exchanges.
 
 ## Strategy Configuration
 
-Strategies are defined in JSON files in the `strategies/` directory. Example:
+Strategies are defined as JSON files in `../strategies/`. Required top-level fields:
 
 ```json
 {
   "strategy_type": "Intraday",
+  "symbol": "NIFTY 50",
+  "currency": "INR",
   "underlying_from": "Cash",
   "entry_time": "11:00",
   "exit_time": "15:15",
@@ -105,7 +70,7 @@ Strategies are defined in JSON files in the `strategies/` directory. Example:
       "qty_lots": 1,
       "strike_criteria": {
         "mode": "STRIKE_TYPE",
-        "params": { "strike_type": "ATM", "symbol": "NIFTY" }
+        "params": { "strike_type": "ATM", "symbol": "NIFTY", "strike_step": 50 }
       },
       "risk": {
         "target": { "enabled": true, "basis": "premium_pct", "value": 30 },
@@ -117,67 +82,55 @@ Strategies are defined in JSON files in the `strategies/` directory. Example:
 }
 ```
 
+> **`symbol` and `currency` are required** — the engine will raise a `ValueError` if either is missing from the JSON.
+
+### Strike Selection Modes
+
+| Mode | Description | Key Params |
+|------|-------------|------------|
+| `STRIKE_TYPE` | ATM, ITM1-5, OTM1-5 | `strike_type`, `symbol`, `strike_step` |
+| `CLOSEST_PREMIUM` | Nearest to target premium | `premium`, `symbol`, `strike_step` |
+| `CLOSEST_DELTA` | Nearest to target delta | `delta`, `symbol`, `strike_step` |
+| `PREMIUM_RANGE` | Within premium range | `value`, `symbol`, `strike_step` |
+
+### Re-entry Modes
+
+| Mode | Behavior |
+|------|----------|
+| `RE_ASAP` | Re-enter immediately at current market price |
+| `RE_COST` | Re-enter only at or better than original entry price |
+| `RE_MOMENTUM` | Re-enter based on momentum indicators |
+
 ## Database Schema
 
-### RUN_CONFIG Table
-- `run_id`: Unique identifier for each strategy run
-- `venue`: Broker name (paper, ib, etc.)
-- `strategy_name`: Strategy configuration name
-- `start_date`/`end_date`: For backtesting periods
-- `status`: INITIAL, RUNNING, FINISHED, ERROR
-- `initial_portfolio`: Starting portfolio state
+### RUN_CONFIG
+| Column | Description |
+|--------|-------------|
+| `run_id` | Unique run identifier (UUID) |
+| `broker_name` | Broker connection used |
+| `exchange` | Exchange traded on |
+| `strategy_name` | Strategy config name |
+| `start_date` / `end_date` | Backtesting period (nullable) |
+| `status` | `INITIAL` → `RUNNING` → `FINISHED` / `ERROR` |
+| `initial_portfolio` | Starting portfolio state (JSON) |
 
-### PORTFOLIO Table
-- `portfolio_id`: Unique identifier
-- `run_id`: Links to strategy run
-- `positions`: JSON serialized position data
-- `cash_balance`: Available cash
-- `total_value`: Total portfolio value
+### PORTFOLIO
+Periodic portfolio snapshots: `positions` (JSON), `cash_balance`, `total_value`.
 
-### STRATEGY_PROFIT_LOSS Table
-- `pnl_id`: Unique identifier
-- `run_id`: Links to strategy run
-- `realized_pnl`: Realized profit/loss
-- `unrealized_pnl`: Unrealized profit/loss
-- `total_pnl`: Total PnL
-- `num_trades`: Number of trades executed
-- `win_count`/`loss_count`: Win/loss statistics
+### STRATEGY_PROFIT_LOSS
+Performance tracking: `realized_pnl`, `unrealized_pnl`, `total_pnl`, `num_trades`, `win_count`, `loss_count`.
 
 ## Exit Conditions
 
-The strategy manager supports multiple exit conditions:
+1. **Time-based** — exit at `exit_time` from strategy config
+2. **Manual** — `manager.stop()`
+3. **Data exhaustion** — all historical ticks processed (backtesting)
+4. **Error** — automatic stop with status logged to DB
 
-1. **Time-based**: Exit at specified time (from strategy config)
-2. **Manual stop**: User-initiated stop via `stop()` method
-3. **Data exhaustion**: All historical data processed (backtesting)
-4. **Error conditions**: Automatic stop on errors
+## Design Principles
 
-## Error Handling
-
-- Comprehensive error logging and database tracking
-- Graceful degradation on broker disconnections
-- Automatic status updates on errors
-- Recovery mechanisms for transient failures
-
-## Performance Considerations
-
-- Queue-based processing for high-frequency data
-- Efficient database operations with batching
-- Memory-efficient position tracking
-- Thread-safe operations for concurrent access
-
-## Testing
-
-The implementation includes:
-- Unit tests for strategy engine logic
-- Integration tests with paper broker
-- Performance tests for high-frequency scenarios
-- Error handling and recovery tests
-
-## Future Enhancements
-
-- Real-time performance monitoring
-- Advanced risk management features
-- Machine learning integration
-- Multi-strategy portfolio management
-- Enhanced reporting and analytics
+- **Explicit configuration** — no hardcoded symbols, exchanges, or currencies; everything flows from config
+- **Broker ≠ Exchange** — `broker_name` (connection) and `exchange` (market) are always separate parameters
+- **Exchange-aware** — expiry logic, trading hours, and currency are resolved from exchange-specific config
+- **Unified pipeline** — same `UnifiedStrategyEngine` processes both live ticks and historical data
+- **Queue-based** — thread-safe tick ingestion for high-frequency data

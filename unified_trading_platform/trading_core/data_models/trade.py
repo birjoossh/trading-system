@@ -5,9 +5,11 @@ from typing import Optional
 from .contract import Contract
 from .order import OrderAction
 
+
 @dataclass
 class Trade:
     """Represents an executed trade"""
+
     trade_id: str
     order_id: str
     contract: Contract
