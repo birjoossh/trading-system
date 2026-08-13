@@ -12,6 +12,7 @@ from unified_trading_platform.trading_core.data_models.option_chain import (
     UnderlyingInfo,
 )
 from unified_trading_platform.trading_core.data_models.option_contract import OptionContract
+from unified_trading_platform.trading_core.brokers.interactive_brokers.common import ib_timeout
 from unified_trading_platform.trading_core.data_models import OptionRight
 from unified_trading_platform.trading_core.data_models.contract import Contract, SecurityType
 from unified_trading_platform.trading_core.brokers.interactive_brokers.ib_client import IBClient
@@ -50,7 +51,7 @@ class IBOptionsMixin:
             
             # Wait for response with timeout
             try:
-                params = future.result(timeout=30)
+                params = future.result(timeout=ib_timeout("option_params_s", 30))
             except TimeoutError:
                 raise TimeoutError("Timeout waiting for option chain parameters")
                 
@@ -154,7 +155,7 @@ class IBOptionsMixin:
 
         # Wait for all requests to complete or timeout
         if pending_requests > 0:
-            if not completion_event.wait(timeout=15):  # 15 second timeout
+            if not completion_event.wait(timeout=ib_timeout("market_data_s", 15)):
                 logger.warning("Timeout waiting for LTP updates")
 
                 # Clean up any remaining subscriptions

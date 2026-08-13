@@ -24,7 +24,7 @@ from unified_trading_platform.trading_core.data_models import TickData
 
 from unified_trading_platform.trading_core.brokers.interactive_brokers.ib_broker_options import IBOptionsMixin
 from unified_trading_platform.trading_core.brokers.interactive_brokers.ib_client import IBClient
-from unified_trading_platform.trading_core.brokers.interactive_brokers.common import CommonMixin
+from unified_trading_platform.trading_core.brokers.interactive_brokers.common import CommonMixin, ib_timeout
 from unified_trading_platform.trading_core.brokers.interactive_brokers.ib_market_data import IBMarketDataMixin
 from unified_trading_platform.trading_core.utils.logger import get_logger
 
@@ -81,8 +81,8 @@ class IBBroker(BrokerInterface):
             self._api_thread.start()
 
             # Wait for connection with timeout
-            if not self._connected_event.wait(timeout=20):
-                logger.error("Connection timeout - IB did not respond within 20 seconds")
+            if not self._connected_event.wait(timeout=ib_timeout("connect_s", 20)):
+                logger.error("Connection timeout - IB did not respond in time")
                 try:
                     self.client.disconnect()
                 except Exception:
@@ -188,7 +188,7 @@ class IBBroker(BrokerInterface):
             
             # Wait for data (30 seconds timeout)
             try:
-                ib_bars = future.result(timeout=30)
+                ib_bars = future.result(timeout=ib_timeout("historical_data_s", 30))
             except TimeoutError:
                 raise TimeoutError("Timeout waiting for historical data")
 
@@ -306,7 +306,7 @@ class IBBroker(BrokerInterface):
             # note: request manager creates a future that resolves when contractDetailsEnd is called
             # this means we wait for ALL details to arrive, not just the first one.
             try:
-                results = future.result(timeout=10)
+                results = future.result(timeout=ib_timeout("contract_details_s", 10))
             except TimeoutError:
                 raise TimeoutError("Timed out waiting for contract details")
             except Exception as e:

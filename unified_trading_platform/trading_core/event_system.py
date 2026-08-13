@@ -5,12 +5,20 @@ Decouples data producing threads (Brokers) from data consuming threads (Strategi
 
 from enum import Enum, auto
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, List
+from typing import Any, Callable, Dict, List, Optional
 import queue
 import threading
 from unified_trading_platform.trading_core.utils import get_logger
 
 logger = get_logger(__name__)
+
+
+def _system_setting(key: str, fallback):
+    """Runtime threading setting from config.yaml (`system.*`)."""
+    from unified_trading_platform.trading_core.config.config import settings
+
+    value = settings.get(f"system.{key}")
+    return fallback if value is None else value
 
 class EventType(Enum):
     TICK = auto()
@@ -48,7 +56,7 @@ class EventEngine:
         self._thread.start()
         logger.info("Event Engine started")
 
-    def stop(self, timeout: float = 5.0):
+    def stop(self, timeout: Optional[float] = None):
         """Stop the event processing thread.
 
         A sentinel wakes the worker immediately instead of waiting out its poll
@@ -56,6 +64,8 @@ class EventEngine:
         """
         if not self._active:
             return
+        if timeout is None:
+            timeout = float(_system_setting("shutdown_timeout_s", 5.0))
         self._active = False
         self._queue.put(_STOP)
         if self._thread:
@@ -83,7 +93,7 @@ class EventEngine:
         while self._active:
             try:
                 # Bounded wait so a missed sentinel can never wedge the thread
-                event = self._queue.get(timeout=1.0)
+                event = self._queue.get(timeout=float(_system_setting("event_queue_poll_s", 1.0)))
                 if event is _STOP:
                     break
                 self._process(event)

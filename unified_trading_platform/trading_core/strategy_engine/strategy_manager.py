@@ -16,7 +16,7 @@ import pandas as pd
 
 # Local application imports
 from unified_trading_platform.trading_core.brokers.base_broker import BrokerInterface
-from unified_trading_platform.trading_core.config.config import Config
+from unified_trading_platform.trading_core.config.config import Config, settings
 from unified_trading_platform.trading_core.data_models import (
     Contract,
     OptionChain,
@@ -87,6 +87,11 @@ class StrategyManager:
         self._options_by_time: Dict = {}  # Grouped by timestamp for O(1) lookup
         self._options_timestamps: List = []  # Sorted timestamps for bisect
 
+        # Live-mode caches and last-seen state
+        self._cached_option_chain: Optional[OptionChain] = None
+        self._chain_cache_bucket = None
+        self._last_underlying_price: float = 0.0
+
         # Threading
         self._stop_event = threading.Event()
         self._processing_thread: Optional[threading.Thread] = None
@@ -143,7 +148,6 @@ class StrategyManager:
             self.end_date = current_date if not self.end_date else self.end_date
 
             # Derive currency from exchange config
-            from unified_trading_platform.trading_core.config.config import settings
             exch_cfg = settings.get_exchange_config(self.exchange)
             currency = exch_cfg.get("currency")
 
@@ -463,7 +467,7 @@ class StrategyManager:
                 quantity=signal.quantity,
                 order_type=signal.order_type,
                 limit_price=signal.price,
-                time_in_force="DAY",
+                time_in_force=settings.get("defaults.contract.time_in_force", "DAY"),
             )
             # Submit order
             order_id = self.trading_system.order_manager.submit_order(signal.contract, order, self.broker_name)
@@ -489,7 +493,13 @@ class StrategyManager:
                     "action": "exit" if signal.is_exit else "entry",
                     "timestamp": order.updated_at.isoformat(),
                     "price": order.avg_fill_price,
-                    "underlying_price": self._get_current_underlying_price(),
+                    # The signal's own reference, not "price now": a replayed
+                    # backtest fills on wall-clock time long after that tick.
+                    "underlying_price": (
+                        signal.underlying_price
+                        if signal.underlying_price is not None
+                        else self._get_current_underlying_price()
+                    ),
                 }
                 self.strategy_engine.update_position_on_fill(signal.leg_id, fill_info)
 
@@ -509,13 +519,28 @@ class StrategyManager:
         # Could implement retry logic here
 
     def _process_historical_data(self, historical_data: List[TickData]):
-        """Process historical data for backtesting"""
+        """Replay historical ticks, rolling the engine over session boundaries.
+
+        A run can span several trading days. An intraday strategy has to start
+        each day fresh — new expiry, new legs — so the engine is rolled whenever
+        the tick date changes.
+        """
+        current_session = None
+        sessions = 0
         for tick in historical_data:
             if self._stop_event.is_set():
                 break
-            # Process the tick
+
+            session = tick.timestamp.date()
+            if session != current_session:
+                if current_session is not None or session != self.strategy_engine.current_date:
+                    self.strategy_engine.start_new_session(session)
+                current_session = session
+                sessions += 1
+
             self._process_tick(tick)
-        logger.info("All ticks processed")
+
+        logger.info("All ticks processed across %d session(s)", sessions)
 
     def _get_historical_data(self) -> List[TickData]:
         """Get historical data for backtesting"""
@@ -536,45 +561,60 @@ class StrategyManager:
             security_type=contract.security_type,
             currency=contract.currency,
             duration=f"{duration_days} D",
-            bar_size="1min",
+            bar_size=settings.get("backtest.bar_size", "1min"),
             broker_name=self.broker_name,
         )
         return historical_data
 
     def _create_underlying_contract(self) -> Contract:
-        """Create contract for underlying instrument"""
+        """Create contract for the strategy's underlying instrument.
+
+        Security type and contract id come from the strategy config — they are
+        instrument facts, not platform constants.
+        """
         return Contract(
             symbol=self.strategy_config.symbol,
-            security_type=SecurityType.STOCK,
+            security_type=SecurityType(self.strategy_config.underlying_security_type),
             exchange=self.exchange,
             currency=self.strategy_config.currency,
-            conId=756733,
+            conId=self.strategy_config.underlying_con_id,
         )
 
     def _get_underlying_price(self, tick_data: TickData) -> float:
         """Get current underlying price"""
-        return tick_data.last or tick_data.bid or tick_data.ask or tick_data.close or 0.0
+        price = tick_data.last or tick_data.bid or tick_data.ask or tick_data.close or 0.0
+        if price:
+            self._last_underlying_price = float(price)
+        return price
 
     def _get_current_underlying_price(self) -> float:
-        """Get current underlying price from broker"""
-        # This would typically query the broker for current price
-        return 0.0  # Placeholder
+        """Most recent underlying price seen on the tick stream.
+
+        Used to stamp fills; 0.0 only before the first tick has arrived.
+        """
+        return self._last_underlying_price
 
     def _get_option_chain(self, tick_data: TickData) -> OptionChain:
-        """Get option chain for given timestamp (cached per session)"""
-        # Cache the option chain to avoid re-reading H5 on every tick
-        if hasattr(self, "_cached_option_chain") and self._cached_option_chain is not None:
+        """Fetch the live option chain, cached for the current minute.
+
+        Re-fetching per tick would hammer the broker, but caching for the whole
+        run (as this used to) freezes premiums at their first observed value and
+        silently invalidates every later PnL number.
+        """
+        bucket = pd.Timestamp(tick_data.timestamp).floor("1min")
+        if self._chain_cache_bucket == bucket and self._cached_option_chain is not None:
             return self._cached_option_chain
+
         contract = Contract(
             symbol=tick_data.symbol,
             security_type=tick_data.security_type,
             exchange=tick_data.exchange,
             currency=tick_data.currency,
-            conId=756733,
+            conId=self.strategy_config.underlying_con_id,
         )
-        logger.info(f"Fetching option chain for contract: {contract}")
-        # TODO: This should be for the specified timestamp. Right now we don't have an implementation for that
+        logger.debug("Fetching option chain for contract: %s", contract)
         self._cached_option_chain = self.trading_system.get_option_chain(self.broker_name, contract)
+        self._chain_cache_bucket = bucket
         return self._cached_option_chain
 
     def _get_initial_portfolio(self) -> Dict[str, Any]:

@@ -8,6 +8,9 @@ system:
   order_timeout: 30
   data_cache_ttl: 300
   default_exchange: "NSE"
+  # Background thread behaviour (seconds)
+  event_queue_poll_s: 1.0    # how long a worker waits on an empty queue
+  shutdown_timeout_s: 5.0    # how long shutdown waits for a worker to stop
 
 exchanges:
   NSE:
@@ -49,10 +52,48 @@ brokers:
     port: 4002  # TWS Live: 7496, Paper: 7497; Gateway Live: 4001, Paper: 4002
     client_id: 1
     timeout: 10
-  
+    # How long to wait for each kind of TWS response (seconds)
+    timeouts:
+      connect_s: 20
+      historical_data_s: 30
+      contract_details_s: 10
+      option_params_s: 30
+      market_data_s: 15
+
   paper_broker:
     enabled: true
     data_dir: "data/paper"
+    fill_delay_s: 1.0        # simulated latency between acknowledgement and fill
+    emit_interval_s: 0.5     # pause between replayed ticks when streaming
+    # Price concession per fill, in points. Buys fill higher, sells lower.
+    # Leave at 0 if you model execution cost via backtest.costs instead —
+    # setting both counts slippage twice.
+    slippage_per_fill: 0.0
+
+# ==========================================
+# PRICING (Black-Scholes / implied volatility)
+# ==========================================
+pricing:
+  risk_free_rate: 0.06       # annual, decimal
+  dividend_yield: 0.0        # annual, decimal
+  min_option_price: 0.01     # premiums below this are treated as untradeable noise
+  implied_vol:
+    lower_bound: 0.000001
+    upper_bound: 5.0
+    tolerance: 0.000001
+    max_iterations: 100
+
+# ==========================================
+# BACKTEST (Historical replay behaviour)
+# ==========================================
+backtest:
+  bar_size: "1min"           # granularity of the underlying bars driving replay
+  default_duration_days: 30  # fallback when a duration string cannot be parsed
+  max_reentries_cap: 20      # hard ceiling on re-entries per leg, whatever a strategy asks for
+  # Default execution costs. A strategy's own "costs" block overrides these.
+  costs:
+    per_lot_roundtrip: 0.0   # commission etc. per lot, charged over a full round trip
+    slippage_per_fill: 0.0   # price concession per fill, in points
 
 # ==========================================
 # API Metadata (Static)
@@ -105,6 +146,7 @@ defaults:
     bar_size: "1 hour"
     market_data_type: "DELAYED"
     snapshot: false
+    strike_step: 50          # fallback strike spacing when a chain is too sparse to infer it
   
   strategy:
     status: "INITIAL"

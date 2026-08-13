@@ -1,8 +1,15 @@
 from __future__ import annotations
+from typing import Optional
+
 import pandas as pd
 from unified_trading_platform.trading_core.strategy_engine.config import StrikeCriteria
 from unified_trading_platform.trading_core.config.config import settings
-from unified_trading_platform.trading_core.strategy_engine.greeks_helper import ensure_delta
+from unified_trading_platform.trading_core.strategy_engine.greeks_helper import (
+    dividend_yield,
+    ensure_delta,
+    min_option_price,
+    risk_free_rate,
+)
 from unified_trading_platform.trading_core.utils import get_logger
 from datetime import datetime
 
@@ -10,7 +17,13 @@ logger = get_logger(__name__)
 
 
 # --- helpers ---
-def _detect_step(strikes: pd.Series, default: float = 50.0) -> float:
+def default_strike_step() -> float:
+    """Fallback strike spacing when a chain is too sparse to infer one."""
+    return float(settings.get("defaults.data.strike_step", 50.0))
+
+
+def _detect_step(strikes: pd.Series, default: Optional[float] = None) -> float:
+    default = default_strike_step() if default is None else default
     s = pd.Series(sorted(pd.Series(strikes).dropna().unique()))
     if len(s) >= 2:
         diffs = s.diff().dropna()
@@ -109,7 +122,7 @@ def select_strike(
         raise ValueError(f"No {option_type} rows")
 
     # common helpers
-    step = _detect_step(df["strike"], default=50.0)
+    step = _detect_step(df["strike"])
     base = round(float(atm_price) / step) * step  # ATM strike from underlying
 
     def nearest_strike(target: float) -> float:
@@ -239,10 +252,10 @@ def select_strike(
             chain,
             S=float(atm_price),
             expiry_dt=expiry_dt,
-            r=float(params.get("risk_free", params.get("r", 0.06))),
-            q=float(params.get("div_yield", params.get("q", 0.0))),
+            r=float(params.get("risk_free", params.get("r", risk_free_rate()))),
+            q=float(params.get("div_yield", params.get("q", dividend_yield()))),
             now_dt=pd.to_datetime(params["now_dt"]).to_pydatetime() if params.get("now_dt") is not None else None,
-            min_price=float(params.get("min_price", 0.01)),
+            min_price=float(params.get("min_price", min_option_price())),
         )
         df = full[full["option_type"].str.upper() == option_type.upper()].copy()
         if "Delta" not in df.columns or df["Delta"].isna().all():
@@ -268,10 +281,10 @@ def select_strike(
             chain,
             S=float(atm_price),
             expiry_dt=expiry_dt,
-            r=float(params.get("risk_free", params.get("r", 0.06))),
-            q=float(params.get("div_yield", params.get("q", 0.0))),
+            r=float(params.get("risk_free", params.get("r", risk_free_rate()))),
+            q=float(params.get("div_yield", params.get("q", dividend_yield()))),
             now_dt=pd.to_datetime(params["now_dt"]).to_pydatetime() if params.get("now_dt") is not None else None,
-            min_price=float(params.get("min_price", 0.01)),
+            min_price=float(params.get("min_price", min_option_price())),
         )
         df = full[full["option_type"].str.upper() == option_type.upper()].copy()
         if "Delta" not in df.columns or df["Delta"].isna().all():

@@ -1,5 +1,5 @@
 from __future__ import annotations
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Optional, Union
 from datetime import datetime
 import pandas as pd
@@ -46,10 +46,32 @@ def _norm_cdf_np(x: np.ndarray) -> np.ndarray:
     return np.where(x >= 0, cdf_abs, 1.0 - cdf_abs)
 
 
+def pricing_setting(key: str, fallback):
+    """Pricing assumption from config.yaml (`pricing.*`)."""
+    from unified_trading_platform.trading_core.config.config import settings
+
+    value = settings.get(f"pricing.{key}")
+    return fallback if value is None else value
+
+
+def risk_free_rate() -> float:
+    return float(pricing_setting("risk_free_rate", 0.06))
+
+
+def dividend_yield() -> float:
+    return float(pricing_setting("dividend_yield", 0.0))
+
+
+def min_option_price() -> float:
+    return float(pricing_setting("min_option_price", 0.01))
+
+
 @dataclass
 class BSParams:
-    r: float = 0.06  # annual risk-free rate (decimal)
-    q: float = 0.00  # dividend yield (decimal)
+    """Market assumptions for pricing; defaults come from config.yaml."""
+
+    r: float = field(default_factory=risk_free_rate)  # annual risk-free rate (decimal)
+    q: float = field(default_factory=dividend_yield)  # dividend yield (decimal)
 
 
 def yearfrac(start: datetime, end: datetime) -> float:
@@ -138,10 +160,10 @@ def bs_delta(S: float, K: float, T: float, r: float, q: float, sigma: float, cp:
 
 def iv_from_price_scalar(S: float, K: float, T: float, r: float, q: float, cp: str, price: float) -> float:
     """Scalar IV calculation using bisection (kept for robustness)."""
-    # Same implementation as before
-    lo, hi = 1e-6, 5.0
-    tol = 1e-6
-    max_iter = 100
+    lo = float(pricing_setting("implied_vol.lower_bound", 1e-6))
+    hi = float(pricing_setting("implied_vol.upper_bound", 5.0))
+    tol = float(pricing_setting("implied_vol.tolerance", 1e-6))
+    max_iter = int(pricing_setting("implied_vol.max_iterations", 100))
     
     p = max(float(price), 0.0)
     cp_code = 'C' if cp.upper().startswith('C') else 'P'
@@ -182,12 +204,15 @@ def compute_iv_delta_for_chain(
     S: float,
     expiry_dt: datetime,
     *,
-    r: float = 0.06,
-    q: float = 0.0,
+    r: Optional[float] = None,
+    q: Optional[float] = None,
     now_dt: Optional[datetime] = None,
-    min_price: float = 0.01,
+    min_price: Optional[float] = None,
 ) -> pd.DataFrame:
     """Vectorized calculation of IV and Delta."""
+    r = risk_free_rate() if r is None else r
+    q = dividend_yield() if q is None else q
+    min_price = min_option_price() if min_price is None else min_price
     df = chain.copy()
     if df.empty:
         return df.assign(IV=pd.Series(dtype=float), Delta=pd.Series(dtype=float))
@@ -241,10 +266,10 @@ def ensure_delta(
     S: float,
     expiry_dt: datetime,
     *,
-    r: float = 0.06,
-    q: float = 0.0,
+    r: Optional[float] = None,
+    q: Optional[float] = None,
     now_dt: Optional[datetime] = None,
-    min_price: float = 0.01,
+    min_price: Optional[float] = None,
 ) -> pd.DataFrame:
     needs = ("Delta" not in chain.columns) or chain["Delta"].isna().mean() > 0.1
     if needs:

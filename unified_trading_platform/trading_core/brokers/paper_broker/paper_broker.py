@@ -15,7 +15,7 @@ import pandas as pd
 
 from unified_trading_platform.trading_core.brokers.base_broker import BrokerInterface
 from unified_trading_platform.trading_core.data_models import Contract
-from unified_trading_platform.trading_core.data_models import Order, OrderStatus
+from unified_trading_platform.trading_core.data_models import Order, OrderAction, OrderStatus
 from unified_trading_platform.trading_core.data_models import OptionChain, StrikeGroup, ExpirationGroup
 from unified_trading_platform.trading_core.data_models import OptionContract
 from unified_trading_platform.trading_core.data_models import OptionRight
@@ -30,6 +30,21 @@ from .jio import JioH5Adapter
 logger = get_logger(__name__)
 
 
+def _default_duration_days() -> int:
+    """Fallback lookback when a duration string cannot be parsed."""
+    from unified_trading_platform.trading_core.config.config import settings
+
+    return int(settings.get("backtest.default_duration_days", 30))
+
+
+def _paper_default(key: str, fallback):
+    """Paper-broker setting from config.yaml (`brokers.paper_broker.*`)."""
+    from unified_trading_platform.trading_core.config.config import settings
+
+    value = settings.get(f"brokers.paper_broker.{key}")
+    return fallback if value is None else value
+
+
 @dataclass
 class PaperBrokerConfig:
     csv_path: Optional[Path] = None
@@ -37,6 +52,7 @@ class PaperBrokerConfig:
     h5_path: Optional[Path] = None
     emit_interval_s: float = 0.5
     fill_delay_s: float = 1.0  # simulated latency between acknowledgement and fill
+    slippage_per_fill: float = 0.0  # price concession per fill, in points
 
 
 class PaperBroker(BrokerInterface):
@@ -53,8 +69,11 @@ class PaperBroker(BrokerInterface):
             csv_path=Path(kwargs.get("csv_path")) if kwargs.get("csv_path") else None,
             db_path=Path(kwargs.get("db_path")) if kwargs.get("db_path") else None,
             h5_path=Path(kwargs.get("h5_path")) if kwargs.get("h5_path") else None,
-            emit_interval_s=kwargs.get("emit_interval_s", 0.5),
-            fill_delay_s=kwargs.get("fill_delay_s", 1.0),
+            emit_interval_s=kwargs.get("emit_interval_s", _paper_default("emit_interval_s", 0.5)),
+            fill_delay_s=kwargs.get("fill_delay_s", _paper_default("fill_delay_s", 1.0)),
+            slippage_per_fill=kwargs.get(
+                "slippage_per_fill", _paper_default("slippage_per_fill", 0.0)
+            ),
         )
         self.mode = "csv" if self.config.csv_path else "db" if self.config.db_path else "h5"
         self._md_threads: Dict[tuple, threading.Thread] = {}
@@ -230,7 +249,7 @@ class PaperBroker(BrokerInterface):
         elif unit.upper().startswith("W"):
             start_dt = end_dt - timedelta(weeks=num)
         else:
-            start_dt = end_dt - timedelta(days=30)
+            start_dt = end_dt - timedelta(days=_default_duration_days())
         df = df[df["timestamp"] >= start_dt]
         ticks: List[TickData] = []
         for _, row in df.iterrows():
@@ -262,7 +281,7 @@ class PaperBroker(BrokerInterface):
             months = int(duration.split()[0])
             start_date = end_date - timedelta(days=months * 30)
         else:
-            start_date = end_date - timedelta(days=30)
+            start_date = end_date - timedelta(days=_default_duration_days())
         query = (
             "SELECT timestamp, open, high, low, close, volume "
             "FROM historical_bars WHERE symbol = ? AND exchange = ? AND bar_size = ? "
@@ -446,6 +465,28 @@ class PaperBroker(BrokerInterface):
         # Paper broker replays recorded data; the market data type has no effect.
         return True
 
+    def _fill_price(self, order: Order) -> float:
+        """Price this simulated venue fills an order at.
+
+        The reference is the order's own price (limit price, or the stop price
+        for stop orders). Slippage is a concession, so it works against the
+        trader: buys fill higher, sells fill lower.
+        """
+        reference = order.limit_price if order.limit_price is not None else order.stop_price
+        if reference is None:
+            logger.warning(
+                "No reference price on %s order; filling at 0.0. Attach a price to the order "
+                "so fills can be priced.",
+                order.order_type.value,
+            )
+            return 0.0
+
+        slippage = float(self.config.slippage_per_fill or 0.0)
+        if not slippage:
+            return float(reference)
+        direction = 1.0 if order.action == OrderAction.BUY else -1.0
+        return max(0.0, float(reference) + direction * slippage)
+
     def _update_order_status(self, order_id: str, status: OrderStatus, delay: float = 0) -> None:
         """Queue an order status update."""
 
@@ -461,7 +502,7 @@ class PaperBroker(BrokerInterface):
                             {
                                 "filled": order.quantity,
                                 "remaining": 0,
-                                "avg_fill_price": order.limit_price or 0.0,
+                                "avg_fill_price": self._fill_price(order),
                             }
                         )
                     self.trigger_callback("order_status", order_id, entry)
