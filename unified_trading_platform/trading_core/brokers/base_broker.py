@@ -103,12 +103,12 @@ class BrokerInterface(ABC):
         pass
 
     @abstractmethod
-    def get_option_chain(self, option_contract: Contract) -> OptionChain:
+    def get_option_chain(self, contract: Contract) -> OptionChain:
         """Get option chain for an underlying instrument"""
         pass
 
     @abstractmethod
-    def get_greeks(self, option_contract: Contract) -> Greeks:
+    def get_greeks(self, contract: Contract) -> Greeks:
         """Get options Greeks for a specific option contract"""
         pass
 

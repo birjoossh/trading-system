@@ -108,7 +108,12 @@ class UnifiedStrategyEngine:
         row = option_chain[(option_chain["strike"] == strike) & (option_chain["option_type"] == option_type.upper())]
         if row.empty:
             return None
-        return float(row.iloc[0]["price"])
+        price = row.iloc[0]["price"]
+        # A NaN premium is missing data, not a price: letting it through would
+        # open a leg whose entry price is NaN and poison every PnL after it.
+        if price is None or pd.isna(price):
+            return None
+        return float(price)
 
     def process_tick(
         self, tick_data: TickData, underlying_price: float, option_chain: Optional[pd.DataFrame] = None
@@ -262,7 +267,6 @@ class UnifiedStrategyEngine:
             if _hist_eod_ts(tick_data, self.config.exit_time):
                 should_exit = True
                 exit_reason = "EOD"
-                leg.hit_target = True
             if _hit_target(rc.target, leg.spec.position, leg.entry_px, leg.entry_S, current_price, underlying_price):
                 should_exit = True
                 exit_reason = "TARGET"

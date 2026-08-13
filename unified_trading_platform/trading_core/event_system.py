@@ -25,6 +25,10 @@ class Event:
     type: EventType
     data: Any
 
+#: Sentinel pushed onto the queue to wake the worker for shutdown.
+_STOP = object()
+
+
 class EventEngine:
     """
     Processes events from a queue in a dedicated background thread.
@@ -36,7 +40,7 @@ class EventEngine:
         self._handlers: Dict[EventType, List[Callable]] = {
             evt_type: [] for evt_type in EventType
         }
-    
+
     def start(self):
         """Start the event processing thread"""
         self._active = True
@@ -44,11 +48,20 @@ class EventEngine:
         self._thread.start()
         logger.info("Event Engine started")
 
-    def stop(self):
-        """Stop the event processing thread"""
+    def stop(self, timeout: float = 5.0):
+        """Stop the event processing thread.
+
+        A sentinel wakes the worker immediately instead of waiting out its poll
+        interval, so shutdown does not stall for a second per engine.
+        """
+        if not self._active:
+            return
         self._active = False
+        self._queue.put(_STOP)
         if self._thread:
-            self._thread.join()
+            self._thread.join(timeout=timeout)
+            if self._thread.is_alive():
+                logger.warning("Event Engine did not stop within %.1fs", timeout)
         logger.info("Event Engine stopped")
 
     def put(self, event: Event):
@@ -66,11 +79,13 @@ class EventEngine:
             self._handlers[event_type].remove(handler)
 
     def _run(self):
-        """Loop loop"""
+        """Drain the queue until stopped."""
         while self._active:
             try:
-                # Wait for 1 second to check active flag
+                # Bounded wait so a missed sentinel can never wedge the thread
                 event = self._queue.get(timeout=1.0)
+                if event is _STOP:
+                    break
                 self._process(event)
             except queue.Empty:
                 continue
