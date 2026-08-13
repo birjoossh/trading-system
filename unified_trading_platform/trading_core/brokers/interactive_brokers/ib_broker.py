@@ -322,14 +322,14 @@ class IBBroker(BrokerInterface):
             logger.error(f"Error in get_contract_details: {e}", exc_info=True)
             raise Exception(f"Error in get_contract_details: {str(e)}")
 
-    def get_option_chain(self, underlying_contract: Contract) -> OptionChain:
+    def get_option_chain(self, contract: Contract) -> OptionChain:
         """
         Backward compatible wrapper that uses the enhanced get_option_chain2 implementation.
         """
         expiration_dates = None
         strikes = None
         ib_option_chain = IBOptionsMixin(self.client, self)
-        return ib_option_chain.get_option_chain(underlying_contract, expiration_dates, strikes)
+        return ib_option_chain.get_option_chain(contract, expiration_dates, strikes)
 
-    def get_greeks(self, option_contract: Contract) -> Dict[str, Any]:
+    def get_greeks(self, contract: Contract) -> Dict[str, Any]:
         pass

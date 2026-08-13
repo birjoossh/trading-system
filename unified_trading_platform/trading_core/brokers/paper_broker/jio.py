@@ -81,7 +81,11 @@ class JioH5Adapter:
                 df["Instr"] = df[c].astype(str).str.upper()
                 break
 
-        return df.sort_index()
+        # Stable sort: several ticks can share a timestamp, and the "last" tick of
+        # a bar is then decided by tie order. A stable sort keeps the feed order
+        # from the file, so bar aggregation is reproducible; the default
+        # quicksort leaves it unspecified.
+        return df.sort_index(kind="stable")
 
     # ----- public API -----
     def spot_series(self, bar_length: str) -> pd.Series:

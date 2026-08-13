@@ -66,7 +66,6 @@ class BarData(BaseModel):
     """Historical bar data"""
 
     model_config = ConfigDict(
-        json_encoders={datetime: lambda v: v.isoformat()},
         json_schema_extra={
             "example": {
                 "timestamp": "2024-01-01T10:00:00",
@@ -135,9 +134,10 @@ class Contract(BaseModel):
             local_symbol=contract.local_symbol,
             expiry=contract.expiry,
             strike=contract.strike,
-            right=contract.right,
-            multiplier=contract.multiplier,
-            trading_class=contract.trading_class,
+            # The domain model calls this `option_right`; the wire field keeps the
+            # broker-facing name `right`.
+            right=contract.option_right,
+            multiplier=None if contract.multiplier is None else str(contract.multiplier),
         )
 
 
@@ -162,8 +162,7 @@ class OptionContract(BaseModel):
     ltp: float
     type: OptionRight
     lot: int
-    last_updated: datetime
-    model_config = ConfigDict(json_encoders={datetime: lambda v: v.isoformat()})
+    last_updated: Optional[datetime] = None
 
     @classmethod
     def from_domain(cls, domain_contract) -> Optional["OptionContract"]:
@@ -174,7 +173,8 @@ class OptionContract(BaseModel):
         return cls(
             option_ticker=domain_contract.option_ticker,
             ltp=domain_contract.ltp,
-            type=domain_contract.type,
+            # The domain model calls this `option_right`.
+            type=domain_contract.option_right,
             lot=domain_contract.lot,
             last_updated=domain_contract.last_updated,
         )
@@ -203,7 +203,6 @@ class ExpirationGroup(BaseModel):
     expiry_date: date
     days_to_expiry: int
     strikes: List[StrikeGroup]
-    model_config = ConfigDict(json_encoders={datetime: lambda v: v.isoformat()})
 
     @classmethod
     def from_domain(cls, domain_expiry) -> "ExpirationGroup":

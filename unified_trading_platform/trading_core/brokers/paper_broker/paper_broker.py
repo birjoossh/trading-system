@@ -36,6 +36,7 @@ class PaperBrokerConfig:
     db_path: Optional[Path] = None
     h5_path: Optional[Path] = None
     emit_interval_s: float = 0.5
+    fill_delay_s: float = 1.0  # simulated latency between acknowledgement and fill
 
 
 class PaperBroker(BrokerInterface):
@@ -53,6 +54,7 @@ class PaperBroker(BrokerInterface):
             db_path=Path(kwargs.get("db_path")) if kwargs.get("db_path") else None,
             h5_path=Path(kwargs.get("h5_path")) if kwargs.get("h5_path") else None,
             emit_interval_s=kwargs.get("emit_interval_s", 0.5),
+            fill_delay_s=kwargs.get("fill_delay_s", 1.0),
         )
         self.mode = "csv" if self.config.csv_path else "db" if self.config.db_path else "h5"
         self._md_threads: Dict[tuple, threading.Thread] = {}
@@ -395,16 +397,22 @@ class PaperBroker(BrokerInterface):
             "status": "Submitted",
             "created_at": datetime.now(),
         }
-        # delayed status update to trigger order status update callback
-        self._update_order_status(order_id, OrderStatus.FILLED, 1)
+        # Simulated exchange latency: fill shortly after acknowledgement, which
+        # drives the same order_status callback path as a real broker.
+        self._update_order_status(order_id, OrderStatus.FILLED, self.config.fill_delay_s)
         return order_id
 
     def cancel_order(self, order_id: str) -> bool:
-        if order_id in self._orders:
-            # delayed status update to trigger order status update callback
-            self._update_order_status(order_id, OrderStatus.CANCELLED, 1)
-            return True
-        return False
+        entry = self._orders.get(order_id)
+        if entry is None:
+            return False
+        # A terminal order cannot be cancelled; saying otherwise would let the
+        # recorded status flip from Filled back to Cancelled.
+        if entry.get("status") in (OrderStatus.FILLED, OrderStatus.CANCELLED):
+            logger.info(f"Order {order_id} is already {entry['status']}; cancel rejected")
+            return False
+        self._update_order_status(order_id, OrderStatus.CANCELLED, self.config.fill_delay_s)
+        return True
 
     def get_order_status(self, order_id: str) -> Dict[str, Any]:
         return self._orders.get(order_id, {"status": "Unknown"})
