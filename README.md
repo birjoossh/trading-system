@@ -318,6 +318,25 @@ print(f"Order status: {status}")
 trading_system.shutdown()
 ```
 
+### Scripts
+
+`scripts/` holds small launchers for the common tasks. They work from any
+directory and take care of the repo root, `PYTHONPATH` and picking up `.venv`:
+
+```bash
+scripts/setup.sh                  # create .venv and install dependencies
+scripts/start-api.sh              # start the FastAPI gateway (0.0.0.0:8000)
+scripts/start-api.sh --port 9000 --reload
+scripts/check-api.sh              # is the gateway up? (non-zero exit if not)
+scripts/run-backtest.sh           # backtest on the bundled sample session
+scripts/run-backtest.sh otm2_short_strangle_1100_1515 ~/data/nifty 2024-01-01 2024-01-31
+scripts/run-tests.sh              # ruff + pytest, the same checks CI runs
+scripts/run-tests.sh -k backtest  # extra arguments go to pytest
+```
+
+`run-backtest.sh` takes a directory of `*.h5` files as well as a single file,
+which replays several sessions in order.
+
 ### Running the Examples
 
 Run from the repo root so the `unified_trading_platform` package resolves:
