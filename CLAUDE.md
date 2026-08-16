@@ -92,6 +92,14 @@ Anything specific to an instrument lives in the strategy JSON, not in config.yam
 
 A run may span several trading days. `StrategyManager._process_historical_data` watches the tick date and calls `UnifiedStrategyEngine.start_new_session(date)` when it changes: traded legs are archived into `completed_legs`, un-entered scaffolding is discarded, pending re-entries are cleared, and fresh legs are built against the new day's expiry. `get_all_positions()` and `get_portfolio_summary()` report across every session; `get_current_positions()` stays scoped to open legs. Leg ids are allocated from a run-wide counter so they never repeat between sessions. Point `h5_path` at a single file, a list, or a directory of `*.h5` (see `jio.resolve_h5_paths`).
 
+### Replay speed and callback ordering
+
+Replay runs at full speed by default: `brokers.paper_broker.emit_interval_s` and `fill_delay_s` are both `0`. They exist to simulate wall-clock pacing and exchange latency, and they change how long a run takes but never what it produces — `tests/test_replay_speed.py` asserts that a run with and without fill latency yields identical positions, PnL and row counts. `poll_interval_s` is separate and must stay above zero; it paces the SQLite tailer, which would otherwise spin.
+
+With zero latency the broker reports a fill *during* `submit_order()`, so anything keyed on the order id must be registered **before** submitting. Two places rely on that: `OrderManager` holds a status that arrives for an unknown order in `_early_status` and applies it once the order registers, and `StrategyManager._execute_order_signal` generates the order id itself and records the signal before calling `submit_order(..., order_id=...)`. Real brokers do the same thing — IB can deliver `orderStatus` before `placeOrder` returns — so keep this ordering when adding callers.
+
+`jio._TICK_CACHE` holds the most recently parsed tick frame, keyed by path plus size and mtime. A backtest parses the same H5 at least twice (option chain, then underlying bars) through separate adapter instances; each caller gets its own copy, so mutating the returned frame is safe.
+
 ### Fills and cost modelling
 
 `OrderSignal` carries the `price` and `underlying_price` the engine acted on. The paper broker fills against that reference (`_fill_price`), so market orders no longer fill at zero, and `update_position_on_fill` reconciles against the state that *produced* the order rather than "now" — in a replayed backtest the fill callback arrives on wall-clock time, long after the simulated clock moved on. Execution cost is modelled once, in `UnifiedStrategyEngine._costs_for`: `per_lot_roundtrip` is charged half on entry and half on exit, `slippage_per_fill` per fill per unit. The paper broker's own `slippage_per_fill` shifts the fill price instead — use one or the other, not both.

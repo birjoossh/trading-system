@@ -21,6 +21,16 @@ def to_pandas_freq(bar_size: str) -> str:
     return s
 
 
+#: Normalized tick frames, keyed by file identity. Holds one entry — these
+#: frames are large, and a run works through one data set at a time.
+_TICK_CACHE: dict = {}
+
+
+def clear_tick_cache() -> None:
+    """Drop the cached tick frame. Mainly useful in tests."""
+    _TICK_CACHE.clear()
+
+
 def resolve_h5_paths(h5_path) -> list:
     """Normalize an H5 location into a sorted list of files.
 
@@ -61,7 +71,27 @@ class JioH5Adapter:
         with pd.HDFStore(self.h5_paths[0], mode="r") as store:
             self.keys = list(store.keys())
 
+    def _cache_key(self):
+        """Identify this data set by path plus size and mtime, so an edited file
+        is re-read rather than served stale from the cache."""
+        return tuple((str(p), p.stat().st_size, p.stat().st_mtime_ns) for p in self.h5_paths)
+
     def _read_tick(self) -> pd.DataFrame:
+        # A backtest parses the same files at least twice — once for the option
+        # chain, once for the underlying bars — through separate adapter
+        # instances. Parsing a million-row session is the slowest step in a run,
+        # so the normalized frame is cached across instances.
+        key = self._cache_key()
+        cached = _TICK_CACHE.get(key)
+        if cached is not None:
+            return cached.copy()
+
+        df = self._read_tick_uncached()
+        _TICK_CACHE.clear()  # single slot: these frames are large
+        _TICK_CACHE[key] = df
+        return df.copy()
+
+    def _read_tick_uncached(self) -> pd.DataFrame:
         frames = []
         for path in self.h5_paths:
             with pd.HDFStore(path, mode="r") as store:

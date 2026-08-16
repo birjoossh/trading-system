@@ -69,6 +69,7 @@ class TestConfigFileDeclaresEverything:
             "backtest.costs.slippage_per_fill",
             "brokers.paper_broker.fill_delay_s",
             "brokers.paper_broker.emit_interval_s",
+            "brokers.paper_broker.poll_interval_s",
             "brokers.paper_broker.slippage_per_fill",
             "brokers.interactive_brokers.timeouts.connect_s",
             "brokers.interactive_brokers.timeouts.historical_data_s",

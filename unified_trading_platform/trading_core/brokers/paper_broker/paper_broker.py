@@ -50,8 +50,13 @@ class PaperBrokerConfig:
     csv_path: Optional[Path] = None
     db_path: Optional[Path] = None
     h5_path: Optional[Path] = None
-    emit_interval_s: float = 0.5
-    fill_delay_s: float = 1.0  # simulated latency between acknowledgement and fill
+    #: Pause between replayed ticks. 0 replays as fast as the consumer can go;
+    #: raise it to pace a replay against a wall clock.
+    emit_interval_s: float = 0.0
+    #: Simulated latency between acknowledgement and fill. 0 fills immediately.
+    fill_delay_s: float = 0.0
+    #: How often the SQLite tailer looks for new rows. Never 0 — that would spin.
+    poll_interval_s: float = 0.5
     slippage_per_fill: float = 0.0  # price concession per fill, in points
 
 
@@ -69,8 +74,9 @@ class PaperBroker(BrokerInterface):
             csv_path=Path(kwargs.get("csv_path")) if kwargs.get("csv_path") else None,
             db_path=Path(kwargs.get("db_path")) if kwargs.get("db_path") else None,
             h5_path=Path(kwargs.get("h5_path")) if kwargs.get("h5_path") else None,
-            emit_interval_s=kwargs.get("emit_interval_s", _paper_default("emit_interval_s", 0.5)),
-            fill_delay_s=kwargs.get("fill_delay_s", _paper_default("fill_delay_s", 1.0)),
+            emit_interval_s=kwargs.get("emit_interval_s", _paper_default("emit_interval_s", 0.0)),
+            fill_delay_s=kwargs.get("fill_delay_s", _paper_default("fill_delay_s", 0.0)),
+            poll_interval_s=kwargs.get("poll_interval_s", _paper_default("poll_interval_s", 0.5)),
             slippage_per_fill=kwargs.get(
                 "slippage_per_fill", _paper_default("slippage_per_fill", 0.0)
             ),
@@ -350,7 +356,8 @@ class PaperBroker(BrokerInterface):
                     volume=int(row.get("volume")) if pd.notna(row.get("volume")) else None,
                 )
                 callback(tick)
-                time.sleep(self.config.emit_interval_s)
+                if self.config.emit_interval_s:
+                    time.sleep(self.config.emit_interval_s)
 
         def run_db():
             last_ts: Optional[str] = None
@@ -380,7 +387,7 @@ class PaperBroker(BrokerInterface):
                         volume=r["volume"],
                     )
                     callback(tick)
-                time.sleep(self.config.emit_interval_s)
+                time.sleep(self.config.poll_interval_s)
 
         def run():
             try:
@@ -513,4 +520,7 @@ class PaperBroker(BrokerInterface):
             thread = threading.Thread(target=update_and_cleanup, daemon=True)
             thread.start()
         else:
+            # No latency to simulate: report synchronously rather than paying for
+            # a thread per order. OrderManager buffers a status that lands before
+            # submit_order() has returned.
             update_and_cleanup()
