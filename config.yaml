@@ -63,8 +63,12 @@ brokers:
   paper_broker:
     enabled: true
     data_dir: "data/paper"
-    fill_delay_s: 1.0        # simulated latency between acknowledgement and fill
-    emit_interval_s: 0.5     # pause between replayed ticks when streaming
+    # Replay runs at full speed by default. Raise these only to simulate
+    # exchange latency or to pace a replay against a wall clock; they change
+    # how long a run takes, never what it produces.
+    fill_delay_s: 0.0        # latency between acknowledgement and fill
+    emit_interval_s: 0.0     # pause between replayed ticks when streaming
+    poll_interval_s: 0.5     # how often the SQLite tailer looks for new rows
     # Price concession per fill, in points. Buys fill higher, sells lower.
     # Leave at 0 if you model execution cost via backtest.costs instead —
     # setting both counts slippage twice.

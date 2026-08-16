@@ -23,6 +23,9 @@ class OrderManager:
         self.db_path = db_path
         self.brokers: Dict[str, BrokerInterface] = {}
         self.orders: Dict[str, ManagedOrder] = {}
+        #: Status updates that arrived before their order finished registering,
+        #: keyed by broker order id. Drained by submit_order().
+        self._early_status: Dict[str, Dict] = {}
         self.callbacks: Dict[str, List[Callable]] = {
             "order_submitted": [],
             "order_filled": [],
@@ -96,15 +99,23 @@ class OrderManager:
         broker.register_callback("order_status", self._on_order_status)
         broker.register_callback("trade_execution", self._on_trade_execution)
 
-    def submit_order(self, contract: Contract, order: Order, broker_name: str) -> str:
-        """Submit an order through specified broker"""
+    def submit_order(
+        self, contract: Contract, order: Order, broker_name: str, order_id: Optional[str] = None
+    ) -> str:
+        """Submit an order through specified broker.
+
+        `order_id` lets the caller choose the correlation id up front, so it can
+        register its own bookkeeping before submitting. A broker may report a
+        fill during the submit call, and anything keyed on the id afterwards
+        would miss it.
+        """
         if broker_name not in self.brokers:
             raise ValueError(f"Broker '{broker_name}' not found")
 
         broker = self.brokers[broker_name]
 
         # Create managed order
-        order_id = str(uuid.uuid4())
+        order_id = order_id or str(uuid.uuid4())
         managed_order = ManagedOrder(
             order_id=order_id,
             broker_order_id=None,
@@ -129,6 +140,15 @@ class OrderManager:
 
             # Trigger callbacks
             self._trigger_callbacks("order_submitted", managed_order)
+
+            # A broker can report a status before submit_order() returns — a paper
+            # fill with no latency does, and IB can deliver orderStatus before
+            # placeOrder returns. Those updates arrive with no order to match, so
+            # they are buffered; apply anything waiting for this order now.
+            early_update = self._early_status.pop(broker_order_id, None)
+            if early_update is not None:
+                logger.debug(f"Applying status that arrived before order {order_id} was registered")
+                self._apply_order_status(managed_order, early_update)
 
             return order_id
 
@@ -214,8 +234,15 @@ class OrderManager:
                 break
 
         if not managed_order:
+            # The order is not registered yet: this status raced ahead of
+            # submit_order() returning. Hold it so the fill is not lost.
+            self._early_status[broker_order_id] = dict(order_info)
             return
 
+        self._apply_order_status(managed_order, order_info)
+
+    def _apply_order_status(self, managed_order: ManagedOrder, order_info: Dict):
+        """Apply a broker status update to a known order."""
         # Update order status
         old_status = managed_order.status
         managed_order.status = order_info.get("status", managed_order.status)

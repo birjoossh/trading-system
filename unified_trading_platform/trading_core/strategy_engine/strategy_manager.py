@@ -7,6 +7,7 @@ Coordinates broker connections, market data, strategy engine, and order manageme
 import bisect
 import queue
 import threading
+import uuid
 from datetime import datetime, date
 from typing import Dict, List, Optional, Any
 
@@ -204,7 +205,7 @@ class StrategyManager:
         self._stop_event.set()
 
         if self._processing_thread and self._processing_thread.is_alive():
-            self._processing_thread.join(timeout=5.0)
+            self._processing_thread.join(timeout=float(settings.get("system.shutdown_timeout_s", 5.0)))
 
         # Update final status
         if self.run_id:
@@ -252,7 +253,7 @@ class StrategyManager:
         """Main processing loop for tick queue"""
         while not self._stop_event.is_set():
             try:
-                tick_data = self.tick_queue.get(timeout=1.0)
+                tick_data = self.tick_queue.get(timeout=float(settings.get("system.event_queue_poll_s", 1.0)))
                 self._process_tick(tick_data)
                 if self._should_exit():
                     logger.info("Exit condition met; stopping tick processing")
@@ -428,6 +429,17 @@ class StrategyManager:
         self._last_resolved_idx = -1
         self._last_resolved_df = None
 
+        # The static columns as plain arrays. Slicing these per tick is far
+        # cheaper than copying the whole template DataFrame each time.
+        self._tpl_columns = {
+            name: self._chain_template[name].to_numpy()
+            for name in ("underlying_symbol", "expiry", "strike", "option_type", "lot")
+        }
+        # A strike present in the metadata but absent from the pivot has no
+        # column to read; mark it so it is dropped rather than silently taking
+        # the price of the last column (which is what index -1 would do).
+        self._missing_price_column = self._col_indices < 0
+
     def _resolve_option_chain_for_tick(self, tick_timestamp) -> pd.DataFrame:
         """Get option chain snapshot at this tick's timestamp.
         Uses bisect for O(log n) timestamp lookup + numpy indexing for O(1) price extraction.
@@ -447,12 +459,23 @@ class StrategyManager:
         # Vectorized price extraction: one numpy index op instead of 200-iteration loop
         prices = self._price_values[idx, self._col_indices]
 
-        df = self._chain_template.copy()
-        df["price"] = prices
-        df["last_updated"] = self._options_timestamps[idx]
+        # Keep only strikes that have a price at this point in time. NaN means
+        # the strike had not traded yet; a missing pivot column means we have no
+        # price for it at all.
+        priced = ~(np.isnan(prices) | self._missing_price_column)
 
-        # Drop strikes with no price yet (NaN from before first tick)
-        df = df.dropna(subset=["price"]).reset_index(drop=True)
+        stamp = self._options_timestamps[idx]
+        df = pd.DataFrame(
+            {
+                "underlying_symbol": self._tpl_columns["underlying_symbol"][priced],
+                "expiry": self._tpl_columns["expiry"][priced],
+                "strike": self._tpl_columns["strike"][priced],
+                "option_type": self._tpl_columns["option_type"][priced],
+                "price": prices[priced],
+                "lot": self._tpl_columns["lot"][priced],
+                "last_updated": stamp,
+            }
+        )
 
         self._last_resolved_idx = idx
         self._last_resolved_df = df
@@ -469,15 +492,22 @@ class StrategyManager:
                 limit_price=signal.price,
                 time_in_force=settings.get("defaults.contract.time_in_force", "DAY"),
             )
-            # Submit order
-            order_id = self.trading_system.order_manager.submit_order(signal.contract, order, self.broker_name)
-
-            # Add to order tracker for O(1) lookups
+            # Track the signal before submitting: a broker with no simulated
+            # latency reports the fill during the submit call, and the fill
+            # handler needs to find this entry.
+            order_id = str(uuid.uuid4())
             self.order_tracker[order_id] = {
                 "signal": signal,
                 "timestamp": datetime.now(),
                 "status": "pending",
             }
+            try:
+                self.trading_system.order_manager.submit_order(
+                    signal.contract, order, self.broker_name, order_id=order_id
+                )
+            except Exception:
+                self.order_tracker.pop(order_id, None)
+                raise
         except Exception as e:
             logger.error(f"Error executing order signal: {e}", exc_info=True)
             self._handle_error(e)
@@ -504,7 +534,9 @@ class StrategyManager:
                 self.strategy_engine.update_position_on_fill(signal.leg_id, fill_info)
 
             # Update order tracker
-            self.order_tracker[order.order_id]["status"] = "filled"
+            tracked = self.order_tracker.get(order.order_id)
+            if tracked is not None:
+                tracked["status"] = "filled"
 
             # Update portfolio
             self._update_portfolio_and_pnl()
